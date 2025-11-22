@@ -136,27 +136,28 @@ def prepare_speech_script(data, mode="official"):
     script = ""
     
     if mode == "official":
-        script += f"Audit Report. Overall Score: {data['total_score']} out of 100. "
-        script += f"Evaluation Summary: {clean_markdown(data['evaluation_summary'])}. "
-        script += "Detailed Cost Analysis. "
-        script += f"Search Cost: {clean_markdown(data['search_cost']['comment'])}. "
-        script += f"Decision Cost: {clean_markdown(data['decision_cost']['comment'])}. "
-        script += "Improvement Directions. "
+        # 英語のラベルを削除し、AIが生成した翻訳済みテキストを繋げる
+        script += f"Overall Score: {data['total_score']}. " # 数字は万国共通なのでOK
+        script += f"{clean_markdown(data['evaluation_summary'])}. "
+        
+        # コスト分析
+        script += f"{clean_markdown(data['search_cost']['comment'])}. "
+        script += f"{clean_markdown(data['decision_cost']['comment'])}. "
+        
+        # 改善提案
         script += f"{clean_markdown(data['improvement_summary'])}. "
         
-    elif mode == "citizen":
-        # 修正: 英語の定型文を削除し、翻訳されたテキストだけを結合
-        script += f"{clean_markdown(data['simple_summary'])}. "
+        east = data.get('east_suggestions', {})
+        script += f"{clean_markdown(east.get('easy'))}. "
         
+    elif mode == "citizen":
+        script += f"{clean_markdown(data['simple_summary'])}. "
         if data.get('risks_and_penalties'):
             for risk in data['risks_and_penalties']:
                 script += f"{clean_markdown(risk)}. "
-        
         script += f"{clean_markdown(data['action_guide_markdown'])}. "
-        
         if data.get('required_documents'):
              script += ", ".join(data['required_documents']) + ". "
-            
         if data.get('important_dates'):
              script += ", ".join(data['important_dates']) + ". "
 
@@ -197,13 +198,16 @@ def verify_safety(file_bytes, file_type, initial_json, model_schema):
         print(f"Verification Error: {e}")
         return initial_json
 
-def analyze_sludge(file_bytes, file_type, doc_type="flyer", status_container=None):
-    # バイアス対策: 公務員への改善提案自体が偏らないように指示を追加
-    bias_instruction = """
+def analyze_sludge(file_bytes, file_type, target_lang="English", doc_type="flyer", status_container=None):
+    # バイアス対策 + 多言語指示
+    bias_instruction = f"""
     **BIAS & INCLUSION PROTOCOLS:**
     1. Check if the document uses gendered or exclusionary language.
     2. Ensure your 'Improvement Suggestions' strictly adhere to Inclusive Design principles.
     3. Recommendations must be culturally neutral and accessible to diverse populations.
+    
+    **LANGUAGE REQUIREMENT:**
+    Output all analysis, summaries, and suggestions in **{target_lang}**.
     """
     
     prompt_notice = f"You are a Behavioral Scientist. Audit the provided Official Administrative Notice. {bias_instruction} Output in JSON."
@@ -211,7 +215,7 @@ def analyze_sludge(file_bytes, file_type, doc_type="flyer", status_container=Non
     
     system_prompt = prompt_notice if doc_type == "notice" else prompt_flyer
     try:
-        if status_container: status_container.markdown("🔄 **Phase 1/2:** Executing Behavioral Science Analysis...")
+        if status_container: status_container.markdown(f"🔄 **Phase 1/2:** Auditing & Translating to {target_lang}...")
         response = client.models.generate_content(
             model="gemini-2.0-flash", 
             contents=[types.Content(parts=[types.Part(text="Strictly audit this document and output in JSON."), types.Part(inline_data=types.Blob(mime_type=file_type, data=file_bytes))])],
@@ -298,15 +302,29 @@ def render_tab_content(key_prefix):
     KEY_PROMPT = f"{key_prefix}_last_prompt"
     KEY_UPLOADED_NAME = f"{key_prefix}_last_uploaded"
     KEY_ASPECT = f"{key_prefix}_target_aspect_ratio"
-    KEY_AUDIO = f"{key_prefix}_audio_bytes" # 音声データ保持用
+    KEY_AUDIO = f"{key_prefix}_audio_bytes"
+    KEY_LANG = f"{key_prefix}_target_lang" # 言語保持用
 
     if KEY_RESULT not in st.session_state: st.session_state[KEY_RESULT] = None
     if KEY_IMAGE not in st.session_state: st.session_state[KEY_IMAGE] = None
     if KEY_PROMPT not in st.session_state: st.session_state[KEY_PROMPT] = ""
     if KEY_UPLOADED_NAME not in st.session_state: st.session_state[KEY_UPLOADED_NAME] = None
     if KEY_AUDIO not in st.session_state: st.session_state[KEY_AUDIO] = None
+    if KEY_LANG not in st.session_state: st.session_state[KEY_LANG] = "English"
     
     st.subheader("📂 1. Upload File / Run Analysis")
+    
+    # --- ★ Official側にも言語選択を追加 ---
+    c_upload_text, c_lang_select = st.columns([2, 1], vertical_alignment="bottom")
+    with c_upload_text:
+        st.write("Select a file to audit.")
+    with c_lang_select:
+        lang_options = ["English", "French", "Spanish", "Japanese", "German", "Italian", "Portuguese", "Ukrainian"]
+        lang_code_map = {"English": "en", "French": "fr", "Spanish": "es", "Japanese": "ja", "German": "de", "Italian": "it", "Portuguese": "pt", "Ukrainian": "uk"}
+        target_lang = st.selectbox("🗣️ Analysis Language", lang_options, index=0, key=f"{key_prefix}_lang_select")
+        st.session_state[KEY_LANG] = target_lang
+        selected_lang_code = lang_code_map[target_lang]
+
     has_result = st.session_state[KEY_RESULT] is not None
     with st.expander("Open/Close Panel", expanded=not has_result):
         uploaded_file = st.file_uploader("Drag & Drop or Select File", type=["pdf", "png", "jpg", "jpeg"], key=f"{key_prefix}_uploader", label_visibility="collapsed")
@@ -324,7 +342,8 @@ def render_tab_content(key_prefix):
             if st.button("🚀 Run Analysis", type="primary", key=f"{key_prefix}_analyze_btn", use_container_width=True):
                 status_box = st.empty()
                 file_bytes = uploaded_file.getvalue(); file_type = uploaded_file.type
-                result = analyze_sludge(file_bytes, file_type, doc_type=key_prefix, status_container=status_box)
+                # target_langを渡す
+                result = analyze_sludge(file_bytes, file_type, target_lang=st.session_state[KEY_LANG], doc_type=key_prefix, status_container=status_box)
                 if result: 
                     status_box.empty()
                     st.session_state[KEY_RESULT] = result
@@ -335,15 +354,16 @@ def render_tab_content(key_prefix):
     if st.session_state[KEY_RESULT]:
         result = st.session_state[KEY_RESULT]
         st.subheader("📊 2. Audit Report")
-        st.markdown('<div class="safety-badge">🛡️ Safety Protocol Verified</div> ', unsafe_allow_html=True)
+        st.markdown(f'<div class="safety-badge">🛡️ Safety Protocol Verified ({st.session_state[KEY_LANG]})</div> ', unsafe_allow_html=True)
         
-        # --- ★ TTS Audio Section for Officials ---
+        # --- TTS Audio Section ---
         col_audio_btn, col_audio_player = st.columns([1, 3])
         with col_audio_btn:
-            if st.button("🗣️ Read Full Report", key=f"{key_prefix}_tts_btn"):
+            if st.button("🗣️ Read Report", key=f"{key_prefix}_tts_btn"):
                 with st.spinner("Generating audio report..."):
                     script = prepare_speech_script(result, mode="official")
-                    audio_data = generate_audio_gtts(script)
+                    # 言語コードを指定
+                    audio_data = generate_audio_gtts(script, lang=selected_lang_code)
                     if audio_data:
                         st.session_state[KEY_AUDIO] = audio_data
         with col_audio_player:
@@ -376,6 +396,7 @@ def render_tab_content(key_prefix):
         with col_settings:
             st.subheader("📝 3. Generation Settings")
             with st.form(f"{key_prefix}_generation_settings_form"):
+                # フォームの初期値に翻訳されたテキストが入るようになる
                 edited_summary = st.text_area("Context", value=result.get("overall_summary"), height=100)
                 edited_key_details = st.text_area("Key Details", value=result.get("key_details"), height=200)
                 edited_suggestions_text = st.text_area("Instructions", value=result.get("east_suggestions", {}).get('easy'), height=150)
@@ -392,7 +413,6 @@ def render_tab_content(key_prefix):
                 st.image(st.session_state[KEY_IMAGE], caption="AI Generated Preview", use_container_width=True)
                 buf = io.BytesIO(); st.session_state[KEY_IMAGE].save(buf, format="PNG")
                 st.download_button("⬇️ Download Image", data=buf.getvalue(), file_name=f"improved_{key_prefix}.png", mime="image/png", key=f"{key_prefix}_dl_btn", use_container_width=True)
-
 # --- Component: Citizen Side ---
 def render_citizen_tab():
     key_prefix = "citizen"
