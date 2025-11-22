@@ -210,7 +210,21 @@ def analyze_sludge(file_bytes, file_type, target_lang="English", doc_type="flyer
     Output all analysis, summaries, and suggestions in **{target_lang}**.
     """
     
-    prompt_notice = f"You are a Behavioral Scientist. Audit the provided Official Administrative Notice. {bias_instruction} Output in JSON."
+    prompt_notice = f"""
+    You are a Behavioral Scientist and Senior Government Auditor. Audit the provided Official Administrative Notice.
+    {bias_instruction}
+    
+    **CRITICAL INSTRUCTION FOR 'KEY DETAILS':**
+    You MUST extract EVERY single factual detail from the document, including:
+    - Exact dollar amounts, tax rates, or fees.
+    - Specific dates (deadlines, issuance dates).
+    - Case numbers, reference IDs, phone numbers, URLs.
+    - Legal clauses or citation numbers.
+    
+    **Do not summarize key details; extract them verbatim.** If the document is a 'Notice', maintain a formal, authoritative tone in your analysis.
+    
+    Output in JSON.
+    """
     prompt_flyer = f"You are a Public Information Design Specialist. Audit the provided flyer. {bias_instruction} Output in JSON."
     
     system_prompt = prompt_notice if doc_type == "notice" else prompt_flyer
@@ -265,21 +279,44 @@ def generate_improved_image(summary, key_details, suggestions_list, aspect_ratio
     bias_prompt = "**DESIGN REQUIREMENT:** Ensure diverse representation in any human imagery. Use high-contrast colors for accessibility (WCAG AA compliance)."
     
     prompt_notice = f"""
-    Generate a **DIGITAL BORN PDF DOCUMENT**. NO paper texture. Background: #FFFFFF.
+    Create a **PRISTINE DIGITAL DOCUMENT** (like a direct PDF export or a high-res screenshot of a Word doc).
+    
+    **VISUAL STYLE:**
+    - **Background:** Pure Flat White (#FFFFFF). Absolutely NO paper texture, NO shadows, NO creases, and NO folds.
+    - **Typography:** Crisp, sharp, black professional sans-serif font (Arial or Helvetica).
+    - **Layout:** Clean, structured, official government layout.
+    - **Quality:** 2D Flat Vector style. Not a photo of a paper.
+
+    **CONTENT STRUCTURE:**
+    - Header: Official Agency Logo & "Official Notice" text.
+    - Body: Clear, left-aligned text based on the SUMMARY provided.
+    - Key Info Box: A clearly outlined box containing the KEY DETAILS.
+    
     {bias_prompt}
+    
     **⚠️ FOOTER:** "**※ AI-Generated Draft for Review Only**"
-    CONTEXT: {summary}
-    DETAILS: {key_details}
-    IMPROVEMENTS: {formatted_suggestions}
+    
+    **INPUT DATA:**
+    SUMMARY: {summary}
+    KEY DETAILS (Must be visible): {key_details}
+    IMPROVEMENTS APPLIED: {formatted_suggestions}
     """
+
     prompt_flyer = f"""
-    Create a **High-Quality Digital Graphic Design Asset**.
+    Create a **High-Quality Digital Graphic Design Asset** (Digital Poster/Infographic).
+    **VISUAL STYLE:** Modern, flat design, high contrast, clean vector art style. 
+    **Background:** Solid color or subtle gradient (No paper texture).
+    
     {bias_prompt}
+    
     **⚠️ FOOTER:** "**※ AI-Generated Draft Image**"
+    
+    **INPUT DATA:**
     CONTEXT: {summary}
     DETAILS: {key_details}
-    IMPROVEMENTS: {formatted_suggestions}
+    IMPROVEMENTS APPLIED: {formatted_suggestions}
     """
+
     target_prompt = prompt_notice if doc_type == "notice" else prompt_flyer
     try:
         response = client.models.generate_content(
@@ -303,7 +340,7 @@ def render_tab_content(key_prefix):
     KEY_UPLOADED_NAME = f"{key_prefix}_last_uploaded"
     KEY_ASPECT = f"{key_prefix}_target_aspect_ratio"
     KEY_AUDIO = f"{key_prefix}_audio_bytes"
-    KEY_LANG = f"{key_prefix}_target_lang" # 言語保持用
+    KEY_LANG = f"{key_prefix}_target_lang"
 
     if KEY_RESULT not in st.session_state: st.session_state[KEY_RESULT] = None
     if KEY_IMAGE not in st.session_state: st.session_state[KEY_IMAGE] = None
@@ -339,7 +376,7 @@ def render_tab_content(key_prefix):
                 st.session_state[KEY_ASPECT] = get_file_aspect_ratio(file_bytes, uploaded_file.type)
                 st.rerun()
 
-            if st.button("🚀 Run Analysis", type="primary", key=f"{key_prefix}_analyze_btn", use_container_width=True):
+            if st.button("🚀 Run Analysis", type="secondary", key=f"{key_prefix}_analyze_btn", use_container_width=True):
                 status_box = st.empty()
                 file_bytes = uploaded_file.getvalue(); file_type = uploaded_file.type
                 # target_langを渡す
@@ -381,14 +418,29 @@ def render_tab_content(key_prefix):
             with col_eval:
                 st.markdown("#### 🧐 Evaluation Summary")
                 st.write(result.get("evaluation_summary"))
-                with st.expander("▼ Detailed Evaluation", expanded=False):
-                    st.write(f"**Search Cost:** {result.get('search_cost', {}).get('comment')}")
-                    st.write(f"**Decision Cost:** {result.get('decision_cost', {}).get('comment')}")
+                with st.expander("▼ Detailed Evaluation (4 Sludge Scores)", expanded=False):
+                    s_deduction = result.get('search_cost', {}).get('deduction', 0)
+                    s_score = 25 - s_deduction                   
+                    d_deduction = result.get('decision_cost', {}).get('deduction', 0)
+                    d_score = 25 - d_deduction                    
+                    c_deduction = result.get('cognitive_cost', {}).get('deduction', 0)
+                    c_score = 25 - c_deduction                   
+                    e_deduction = result.get('emotional_cost', {}).get('deduction', 0)
+                    e_score = 25 - e_deduction
+                    st.write(f"**🔍 Search Score ({s_score}/25):** {result.get('search_cost', {}).get('comment')}")
+                    st.write(f"**🤔 Decision Score ({d_score}/25):** {result.get('decision_cost', {}).get('comment')}")
+                    st.write(f"**🧠 Cognitive Score ({c_score}/25):** {result.get('cognitive_cost', {}).get('comment')}")
+                    st.write(f"**😫 Emotional Score ({e_score}/25):** {result.get('emotional_cost', {}).get('comment')}")
+
             with col_improve:
                 st.markdown("#### ✨ Improvement Direction")
                 st.write(result.get("improvement_summary"))
                 with st.expander("▼ EAST Suggestions", expanded=False):
-                    st.write(f"**Easy:** {result.get('east_suggestions', {}).get('easy')}")
+                    east = result.get("east_suggestions", {})
+                    st.write(f"**😌 Easy:** {east.get('easy')}")
+                    st.write(f"**✨ Attractive:** {east.get('attractive')}")
+                    st.write(f"**🗣️ Social:** {east.get('social')}")
+                    st.write(f"**⏱️ Timely:** {east.get('timely')}")
         
         st.markdown("""<div style="display: flex; align-items: center; justify-content: center; gap: 10px; padding: 20px; margin-top: 10px; margin-bottom: 10px;"><span style="font-size: 2rem;">⬇️</span><span style="color: #555; font-weight: bold; font-size: 1rem;">Create improved design based on this audit</span></div>""", unsafe_allow_html=True)
 
@@ -399,10 +451,17 @@ def render_tab_content(key_prefix):
                 # フォームの初期値に翻訳されたテキストが入るようになる
                 edited_summary = st.text_area("Context", value=result.get("overall_summary"), height=100)
                 edited_key_details = st.text_area("Key Details", value=result.get("key_details"), height=200)
-                edited_suggestions_text = st.text_area("Instructions", value=result.get("east_suggestions", {}).get('easy'), height=150)
+                east = result.get("east_suggestions", {})
+                combined_suggestions = (
+                    f"- Easy: {east.get('easy', '')}\n"
+                    f"- Attractive: {east.get('attractive', '')}\n"
+                    f"- Social: {east.get('social', '')}\n"
+                    f"- Timely: {east.get('timely', '')}"
+                )
+                edited_suggestions_text = st.text_area("Instructions (EAST Framework)", value=combined_suggestions, height=150)
                 submitted = st.form_submit_button("📄 Generate Improved Document", type="secondary", use_container_width=True)
             if submitted:
-                with st.spinner("Gemini 3 Pro is designing..."):
+                with st.spinner("AI is designing..."):
                     suggestions_list = [line.strip() for line in edited_suggestions_text.split('\n') if line.strip()]
                     image, used_prompt = generate_improved_image(edited_summary, edited_key_details, suggestions_list, aspect_ratio=st.session_state[KEY_ASPECT], doc_type=key_prefix)
                     if image: st.session_state[KEY_IMAGE] = image; st.session_state[KEY_PROMPT] = used_prompt; st.rerun()
@@ -455,7 +514,7 @@ def render_citizen_tab():
                 file_bytes = uploaded_file.getvalue()
                 st.rerun()
 
-            if st.button("🔍 Decipher Document", type="primary", key=f"{key_prefix}_analyze_btn", use_container_width=True):
+            if st.button("🔍 Decipher Document", type="secondary", key=f"{key_prefix}_analyze_btn", use_container_width=True):
                 status_box = st.empty()
                 file_bytes = uploaded_file.getvalue(); file_type = uploaded_file.type
                 # 引数に target_lang を渡す
@@ -518,7 +577,7 @@ def render_citizen_tab():
             with st.form(key=f"{key_prefix}_feedback_form"):
                 default_feedback = f"[Citizen Feedback - {st.session_state[KEY_LANG]}]\nIssues: {result.get('sludge_observation')}\n\nRequest: Please simplify."
                 feedback_text = st.text_area("Message to Send", value=default_feedback, height=150)
-                submit_feedback = st.form_submit_button("📨 Send Improvement Request", type="primary", use_container_width=True)
+                submit_feedback = st.form_submit_button("📨 Send Improvement Request", type="secondary", use_container_width=True)
             if submit_feedback: st.success("✅ Sent!"); st.balloons()
 
 # --- Main App ---
@@ -530,10 +589,9 @@ def main():
     with col_title:
         st.title("Civic Reach")
         st.markdown("""
-            **Identifying 'Sludge' in government services** | Behavioral Science × Generative AI
-
+            **Identifying 'Sludge' in government services** | Behavioral Science × Generative AI<br>
             Based on the OECD report *'Fixing Frictions: ‘Sludge audits’ around the world'*. Details of the methodology can be found [here](https://github.com/hrkzz/civic-reach/blob/main/methodology.md).
-            """)
+            """, unsafe_allow_html=True)
 
     with col_controls:
         # コントロールエリア内をさらに左右に分割してボタンを並べる
@@ -555,7 +613,7 @@ def main():
 
         with c_reset:
             # "Reset" ボタン: 赤色は維持しつつ、ラベルを短くして圧迫感を減らす
-            if st.button("🗑️ Reset App", type="primary", use_container_width=True, help="Wipe all data and restart session"):
+            if st.button("🗑️ Reset App", type="secondary", use_container_width=True, help="Wipe all data and restart session"):
                 clear_session_data()
         
     tab_official_notice, tab_official_flyer, tab_citizen = st.tabs(["【Officials】 Notice Audit", "【Officials】 Flyer Audit", "【Citizens】 Doc Decipher"])
