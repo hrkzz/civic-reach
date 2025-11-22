@@ -472,6 +472,8 @@ def render_tab_content(key_prefix):
                 st.image(st.session_state[KEY_IMAGE], caption="AI Generated Preview", use_container_width=True)
                 buf = io.BytesIO(); st.session_state[KEY_IMAGE].save(buf, format="PNG")
                 st.download_button("⬇️ Download Image", data=buf.getvalue(), file_name=f"improved_{key_prefix}.png", mime="image/png", key=f"{key_prefix}_dl_btn", use_container_width=True)
+                st.write("")
+                st.caption("💡 To refine the result, adjust details in 3. Generation Settings and regenerate.")
 # --- Component: Citizen Side ---
 def render_citizen_tab():
     key_prefix = "citizen"
