@@ -84,11 +84,11 @@ class SludgeAudit(BaseModel):
     east_suggestions: EastSuggestions = Field(..., description="Detailed improvement suggestions based on the EAST framework.")
 
 class CitizenGuide(BaseModel):
-    sludge_observation: str = Field(..., description="Analysis of why this document is difficult.")
-    simple_summary: str = Field(..., description="A Plain English summary. Clearly state 'Who' needs to do 'What'.")
-    action_guide_markdown: str = Field(..., description="Step-by-step action guide in Markdown.")
-    risks_and_penalties: list[str] = Field(..., description="★CRITICAL: List of warnings regarding disadvantages, penalties.")
-    required_documents: list[str] = Field(..., description="List of required documents.")
+    sludge_observation: str = Field(..., description="Analysis of why this document is difficult (in the target language).")
+    simple_summary: str = Field(..., description="A simple summary in the target language. Clearly state 'Who' needs to do 'What'.")
+    action_guide_markdown: str = Field(..., description="Step-by-step action guide in Markdown (in the target language).")
+    risks_and_penalties: list[str] = Field(..., description="★CRITICAL: List of warnings regarding disadvantages, penalties (in the target language).")
+    required_documents: list[str] = Field(..., description="List of required documents (translated if necessary).")
     important_dates: list[str] = Field(..., description="List of important dates.")
 
 # --- Utility Functions ---
@@ -136,48 +136,38 @@ def prepare_speech_script(data, mode="official"):
     script = ""
     
     if mode == "official":
-        # SludgeAudit model
         script += f"Audit Report. Overall Score: {data['total_score']} out of 100. "
         script += f"Evaluation Summary: {clean_markdown(data['evaluation_summary'])}. "
-        
         script += "Detailed Cost Analysis. "
         script += f"Search Cost: {clean_markdown(data['search_cost']['comment'])}. "
         script += f"Decision Cost: {clean_markdown(data['decision_cost']['comment'])}. "
-        
         script += "Improvement Directions. "
         script += f"{clean_markdown(data['improvement_summary'])}. "
         
-        east = data.get('east_suggestions', {})
-        script += "EAST Framework Suggestions. "
-        script += f"Easy: {clean_markdown(east.get('easy'))}. "
-        script += f"Attractive: {clean_markdown(east.get('attractive'))}. "
-        
     elif mode == "citizen":
-        # CitizenGuide model
-        script += "Document Guide. Here is the summary. "
+        # 修正: 英語の定型文を削除し、翻訳されたテキストだけを結合
         script += f"{clean_markdown(data['simple_summary'])}. "
         
         if data.get('risks_and_penalties'):
-            script += "Please be aware of the following risks and penalties. "
             for risk in data['risks_and_penalties']:
                 script += f"{clean_markdown(risk)}. "
         
-        script += "Action Guide. "
         script += f"{clean_markdown(data['action_guide_markdown'])}. "
         
         if data.get('required_documents'):
-            script += "Required Documents: " + ", ".join(data['required_documents']) + ". "
+             script += ", ".join(data['required_documents']) + ". "
             
         if data.get('important_dates'):
-            script += "Important Dates: " + ", ".join(data['important_dates']) + ". "
+             script += ", ".join(data['important_dates']) + ". "
 
     return script
 
-def generate_audio_gtts(text):
-    """Uses Google Text-to-Speech (gTTS)"""
+def generate_audio_gtts(text, lang='en'):
+    """Uses Google Text-to-Speech (gTTS) with language support"""
     try:
         if not text: return None
-        tts = gTTS(text=text, lang='en', slow=False)
+        # lang引数をgTTSに渡す
+        tts = gTTS(text=text, lang=lang, slow=False)
         fp = io.BytesIO()
         tts.write_to_fp(fp)
         fp.seek(0)
@@ -234,20 +224,24 @@ def analyze_sludge(file_bytes, file_type, doc_type="flyer", status_container=Non
         st.error(f"Analysis Error: {e}")
         return None
 
-def analyze_citizen_doc(file_bytes, file_type, status_container=None):
-    # バイアス対策: 市民への説明文が公平かつ中立であることを強制
-    system_prompt = """
-    You are a High-Reliability AI Assistant. Analyze the document and create a clear, Plain English explanation.
+def analyze_citizen_doc(file_bytes, file_type, target_lang="English", status_container=None):
+    # 修正: 言語を指定して翻訳・要約するようにプロンプトを変更
+    system_prompt = f"""
+    You are a High-Reliability AI Assistant. Analyze the provided government document.
     
+    **TASK:** 1. Identify "Sludge" (frictions/difficulties).
+    2. **Translate and Summarize the content into {target_lang}**.
+    3. Extract Risks, Requirements, and Dates in **{target_lang}**.
+
     **MANDATORY BIAS & SAFETY PROTOCOLS:**
-    1. **Inclusive Language:** Use gender-neutral terms (e.g., 'they/them', 'parent', 'applicant') instead of gendered ones (e.g., 'he/she', 'mother/father').
-    2. **Cultural Neutrality:** Avoid idioms, metaphors, or references specific to a single culture. Use universal plain language (CEFR B1 level).
-    3. **Objectivity:** Present facts without judgmental adjectives. Avoid assumptions about the user's family structure or financial status.
+    1. **Inclusive Language:** Use gender-neutral terms suitable for {target_lang}.
+    2. **Cultural Neutrality:** Avoid idioms specific to English. Use plain language (CEFR B1 level equivalent in {target_lang}).
+    3. **Objectivity:** Present facts without judgmental adjectives.
     
-    Output strictly in JSON.
+    Output strictly in JSON using the defined schema.
     """
     try:
-        if status_container: status_container.markdown("🔄 **Phase 1/2:** Interpreting and Summarizing...")
+        if status_container: status_container.markdown(f"🔄 **Phase 1/2:** Analyzing & Translating to {target_lang}...")
         response = client.models.generate_content(
             model="gemini-2.0-flash", 
             contents=[types.Content(parts=[types.Part(text="Perform a sludge audit and explain simply."), types.Part(inline_data=types.Blob(mime_type=file_type, data=file_bytes))])],
@@ -405,14 +399,31 @@ def render_citizen_tab():
     KEY_RESULT = f"{key_prefix}_result"
     KEY_UPLOADED_NAME = f"{key_prefix}_last_uploaded"
     KEY_AUDIO = f"{key_prefix}_audio_bytes"
+    KEY_LANG = f"{key_prefix}_target_lang" # 言語保持用
 
     if KEY_RESULT not in st.session_state: st.session_state[KEY_RESULT] = None
     if KEY_UPLOADED_NAME not in st.session_state: st.session_state[KEY_UPLOADED_NAME] = None
     if KEY_AUDIO not in st.session_state: st.session_state[KEY_AUDIO] = None
+    if KEY_LANG not in st.session_state: st.session_state[KEY_LANG] = "English"
 
     st.subheader("📂 1. Upload Document")
-    st.markdown("Upload a difficult government document. The AI will analyze it, verify facts, and explain it simply.")
     
+    # --- ★ 言語選択 UI (アクセシビリティ向上) ---
+    c_upload_text, c_lang_select = st.columns([2, 1], vertical_alignment="bottom")
+    with c_upload_text:
+        st.markdown("Upload a difficult government document. The AI will analyze, verify, and explain it in your preferred language.")
+    with c_lang_select:
+        # 言語リスト
+        lang_options = ["English", "French", "Spanish", "Japanese", "German", "Italian", "Portuguese"]
+        # gTTS用言語コードマップ
+        lang_code_map = {
+            "English": "en", "French": "fr", "Spanish": "es", "Japanese": "ja",
+            "German": "de", "Italian": "it", "Portuguese": "pt"
+        }
+        target_lang = st.selectbox("🗣️ Output Language", lang_options, index=0, key=f"{key_prefix}_lang_select")
+        st.session_state[KEY_LANG] = target_lang
+        selected_lang_code = lang_code_map[target_lang]
+
     has_result = st.session_state[KEY_RESULT] is not None
     with st.expander("Open/Close Panel", expanded=not has_result):
         uploaded_file = st.file_uploader("Drag & Drop or Select File", type=["pdf", "png", "jpg", "jpeg"], key=f"{key_prefix}_uploader", label_visibility="collapsed")
@@ -427,7 +438,8 @@ def render_citizen_tab():
             if st.button("🔍 Decipher Document", type="primary", key=f"{key_prefix}_analyze_btn", use_container_width=True):
                 status_box = st.empty()
                 file_bytes = uploaded_file.getvalue(); file_type = uploaded_file.type
-                result = analyze_citizen_doc(file_bytes, file_type, status_container=status_box)
+                # 引数に target_lang を渡す
+                result = analyze_citizen_doc(file_bytes, file_type, target_lang=st.session_state[KEY_LANG], status_container=status_box)
                 if result: 
                     status_box.empty()
                     st.session_state[KEY_RESULT] = result
@@ -438,19 +450,19 @@ def render_citizen_tab():
         result = st.session_state[KEY_RESULT]
         
         st.subheader("📝 2. Document Guide")
-        st.markdown('<div class="safety-badge">🛡️ Safety Protocol Verified (Correctness Check)</div> ', unsafe_allow_html=True)
+        st.markdown(f'<div class="safety-badge">🛡️ Safety Protocol Verified ({st.session_state[KEY_LANG]})</div> ', unsafe_allow_html=True)
         
         with st.expander("🔍 Why is this document confusing? (AI Analysis)", expanded=False):
             st.write(result.get("sludge_observation"))
 
-        # --- ★ TTS Audio Section for Citizens (Full Guide) ---
+        # --- ★ TTS Audio Section for Citizens (Multilingual) ---
         col_audio_btn, col_audio_player = st.columns([1, 3])
         with col_audio_btn:
-            if st.button("🗣️ Listen to Full Guide", key=f"{key_prefix}_tts_btn"):
+            if st.button("🗣️ Listen to Guide", key=f"{key_prefix}_tts_btn"):
                 with st.spinner("Creating audio guide..."):
-                    # 市民向けには、要約・リスク・手順すべてを含むスクリプトを生成
                     script = prepare_speech_script(result, mode="citizen")
-                    audio_data = generate_audio_gtts(script)
+                    # 言語コードを指定して音声を生成
+                    audio_data = generate_audio_gtts(script, lang=selected_lang_code)
                     if audio_data:
                         st.session_state[KEY_AUDIO] = audio_data
         with col_audio_player:
@@ -484,7 +496,7 @@ def render_citizen_tab():
         with st.container(border=True):
             st.subheader("📢 Report 'Sludge' to the Agency")
             with st.form(key=f"{key_prefix}_feedback_form"):
-                default_feedback = f"[Citizen Feedback]\nIssues: {result.get('sludge_observation')}\n\nRequest: Please simplify."
+                default_feedback = f"[Citizen Feedback - {st.session_state[KEY_LANG]}]\nIssues: {result.get('sludge_observation')}\n\nRequest: Please simplify."
                 feedback_text = st.text_area("Message to Send", value=default_feedback, height=150)
                 submit_feedback = st.form_submit_button("📨 Send Improvement Request", type="primary", use_container_width=True)
             if submit_feedback: st.success("✅ Sent!"); st.balloons()
