@@ -519,7 +519,7 @@ def main():
         """
         Civic Reachは、行政手続きの「わかりにくさ」や「手間」を行動科学と生成AIで発見し、誰にでも伝わるように自動変換するツールです。
         
-        OECDのレポート 'Fixing Frictions: ‘Sludge audits’ around the world' に基づいています。評価基準の詳細は[こちら](https://github.com/YOUR_USERNAME/civic_reach/blob/main/methodology.md)
+        OECDのレポート 'Fixing Frictions: ‘Sludge audits’ around the world' に基づいています。評価基準の詳細は[こちら](https://github.com/YOUR_USERNAME/civic-reach/blob/main/methodology.md)
         """
     )
 

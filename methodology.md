@@ -61,5 +61,5 @@ Civic Navi は、レポート **Page 9, Figure 1.1 "The Psychological Costs of S
 ---
 
 ## 参考文献 (References)
-* **OECD (2024)**, *Fixing Frictions: ‘Sludge audits’ around the world*, OECD Public Governance Policy Papers, OECD Publishing, Paris. [https://doi.org/10.1787/14e1c5e8-en-fr](https://doi.org/10.1787/14e1c5e8-en-fr)
+* **OECD (2024)**, *Fixing Frictions: ‘Sludge audits’ around the world*, OECD Public Governance Policy Papers, OECD Publishing, Paris. [https://www.oecd.org/en/publications/fixing-frictions-sludge-audits-around-the-world_5e9bb35c-en.html](https://www.oecd.org/en/publications/fixing-frictions-sludge-audits-around-the-world_5e9bb35c-en.html)
 * **New South Wales Government (2024)**, *The NSW Government Sludge Audit Method*.
