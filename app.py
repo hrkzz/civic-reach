@@ -111,6 +111,16 @@ def get_file_aspect_ratio(file_bytes, file_type):
     except Exception: pass
     return "3:4"
 
+# --- 追加機能: セッションクリア (Privacy Control) ---
+def clear_session_data():
+    """すべてのセッションデータを明示的に削除し、アプリをリセットする"""
+    for key in list(st.session_state.keys()):
+        del st.session_state[key]
+    # Streamlitのキャッシュクリア（念のため）
+    st.cache_data.clear()
+    st.cache_resource.clear()
+    st.rerun()
+    
 # --- ★ Audio & Text Processing Functions ---
 
 def clean_markdown(text):
@@ -457,8 +467,40 @@ def render_citizen_tab():
 # --- Main App ---
 def main():
     apply_custom_styles()
-    st.title("Civic Reach")
-    st.markdown("Identifying 'Sludge' in government services using Behavioral Science and Generative AI. Based on the OECD report *'Fixing Frictions: ‘Sludge audits’ around the world'*. Details of the evaluation criteria can be found [here](https://github.com/hrkzz/civic-reach/blob/main/methodology.md)")
+
+    col_title, col_controls = st.columns([0.7, 0.3], gap="medium", vertical_alignment="bottom")
+
+    with col_title:
+        st.title("Civic Reach")
+        st.markdown("""
+            **Identifying 'Sludge' in government services** | Behavioral Science × Generative AI
+
+            Based on the OECD report *'Fixing Frictions: ‘Sludge audits’ around the world'*. Details of the methodology can be found [here](https://github.com/hrkzz/civic-reach/blob/main/methodology.md).
+            """)
+
+    with col_controls:
+        # コントロールエリア内をさらに左右に分割してボタンを並べる
+        c_policy, c_reset = st.columns([1, 1], gap="small")
+        
+        with c_policy:
+            # Expanderの代わりに Popover を使用 (見た目がボタンになりスッキリする)
+            with st.popover("🔐 Security", use_container_width=True):
+                st.markdown("### Zero-Retention Policy")
+                st.info(
+                    """
+                    **Stateless Architecture:**
+                    * Data is processed in-memory (RAM) only.
+                    * No data persists after session ends.
+                    * **Enterprise Protection:** Inputs are NOT used for model training.
+                    """
+                )
+                st.caption("Status: ● System Active")
+
+        with c_reset:
+            # "Reset" ボタン: 赤色は維持しつつ、ラベルを短くして圧迫感を減らす
+            if st.button("🗑️ Reset App", type="primary", use_container_width=True, help="Wipe all data and restart session"):
+                clear_session_data()
+        
     tab_official_notice, tab_official_flyer, tab_citizen = st.tabs(["【Officials】 Notice Audit", "【Officials】 Flyer Audit", "【Citizens】 Doc Decipher"])
     with tab_official_notice: render_tab_content("notice")
     with tab_official_flyer: render_tab_content("flyer")
