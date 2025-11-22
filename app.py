@@ -8,9 +8,6 @@ from pydantic import BaseModel, Field
 from PIL import Image
 import io
 import pypdf
-from docx import Document
-from docx.shared import Pt
-from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 # 1. 環境変数の読み込み
 load_dotenv()
@@ -218,11 +215,12 @@ def analyze_citizen_doc(file_bytes, file_type):
         st.error(f"分析エラー: {e}")
         return None
 
-# --- 画像生成関数 (職員向け・厳格化・AI明示) ---
+# --- 画像生成関数 (元に戻しました: デザイン品質最優先) ---
 def generate_improved_image(summary, key_details, suggestions_list, aspect_ratio="3:4", doc_type="flyer"):
     formatted_suggestions = "\n".join([f"- {s}" for s in suggestions_list])
 
     # 通知文用：デジタルネイティブPDF風 + AI透かし
+    # デザイン重視のプロンプトに戻し、English Outputを維持するよう調整
     prompt_notice = f"""
     Generate a **DIGITAL BORN PDF DOCUMENT** (Direct Export style) of a formal Government Letter/Notice.
     
@@ -288,106 +286,6 @@ def generate_improved_image(summary, key_details, suggestions_list, aspect_ratio
     except Exception as e:
         st.error(f"画像生成エラー: {e}")
         return None, target_prompt
-
-# --- テキスト生成 & Word変換関数 (Interoperability強化) ---
-
-@st.cache_data(show_spinner=False)
-def generate_rewrite_text(summary, key_details, suggestions_list, doc_type="notice"):
-    """
-    改善された文書のテキスト本文をMarkdown形式で生成する
-    """
-    formatted_suggestions = "\n".join([f"- {s}" for s in suggestions_list])
-    
-    # プロンプト：構造化されたMarkdownを出力させる
-    system_prompt = """
-    あなたは行政文書のライティング専門家（Plain Language Expert）です。
-    提供された情報に基づき、市民に伝わりやすい「改善版の通知文」を作成してください。
-    
-    **出力形式:** Markdown
-    * タイトルは `#` (H1)
-    * サブタイトル・見出しは `##` (H2)
-    * 重要な強調箇所は `**bold**`
-    * 箇条書きは `-`
-    
-    **要件:**
-    * 威圧的な表現を避け、丁寧かつ明確に。
-    * 「いつ」「いくら」「どうすればいいか」を明確に構造化する。
-    * 挨拶文などの形式的な定型句も適切に含めること。
-    """
-    
-    user_prompt = f"""
-    以下の情報を元に、行政文書（{doc_type}）のリライト案を作成してください。
-
-    # 1. 文書の背景 (Context)
-    {summary}
-
-    # 2. 必須項目 (Key Details - Must Include)
-    {key_details}
-
-    # 3. 改善のポイント (Instructions)
-    {formatted_suggestions}
-    """
-
-    try:
-        response = client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=[
-                types.Content(parts=[types.Part(text=user_prompt)])
-            ],
-            config=types.GenerateContentConfig(
-                system_instruction=system_prompt,
-                temperature=0.7
-            )
-        )
-        return response.text
-    except Exception as e:
-        st.error(f"テキスト生成エラー: {e}")
-        return ""
-
-def create_docx_from_markdown(markdown_text):
-    """
-    簡易的なMarkdownパーサーを使ってWordファイルを生成する
-    """
-    doc = Document()
-    
-    # 基本スタイル設定（日本語フォント設定などは環境依存があるため、今回は標準設定で実装）
-    style = doc.styles['Normal']
-    font = style.font
-    font.name = 'Meiryo' # Windows/Office環境向けにメイリオなどを指定しておくと親切
-    font.size = Pt(10.5)
-
-    for line in markdown_text.split('\n'):
-        line = line.strip()
-        if not line:
-            continue
-        
-        if line.startswith('# '):
-            # タイトル (H1)
-            p = doc.add_heading(line[2:], level=1)
-            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        elif line.startswith('## '):
-            # 見出し (H2)
-            doc.add_heading(line[3:], level=2)
-        elif line.startswith('### '):
-             # 見出し (H3)
-            doc.add_heading(line[4:], level=3)
-        elif line.startswith('- ') or line.startswith('* '):
-            # 箇条書き
-            p = doc.add_paragraph(line[2:], style='List Bullet')
-        else:
-            # 本文（ボールド処理は簡易的に実装）
-            p = doc.add_paragraph()
-            parts = line.split('**')
-            for i, part in enumerate(parts):
-                run = p.add_run(part)
-                if i % 2 == 1: # 奇数番目は ** で囲まれていた部分
-                    run.bold = True
-                    
-    # メモリ上のバイナリとして保存
-    buffer = io.BytesIO()
-    doc.save(buffer)
-    buffer.seek(0)
-    return buffer
 
 # --- 共通コンポーネント: 職員向け ---
 def render_tab_content(key_prefix):
@@ -482,74 +380,23 @@ def render_tab_content(key_prefix):
                 edited_suggestions_text = st.text_area("③ 改善指示 (Instructions)", value=default_suggestions, height=150, key=f"{key_prefix}_input_suggestions")
                 submitted = st.form_submit_button("📄 改善版ドキュメントを生成", type="secondary", use_container_width=True)
             if submitted:
-                # 画像生成
-                with st.spinner("Gemini 3 Pro がレイアウトデザインを生成中..."):
+                with st.spinner("Gemini 3 Pro が文書レイアウトを生成中..."):
                     suggestions_list = [line.strip() for line in edited_suggestions_text.split('\n') if line.strip()]
                     image, used_prompt = generate_improved_image(edited_summary, edited_key_details, suggestions_list, aspect_ratio=st.session_state[KEY_ASPECT], doc_type=key_prefix)
                     if image:
                         st.session_state[KEY_IMAGE] = image
                         st.session_state[KEY_PROMPT] = used_prompt
-                # 【追加】テキスト生成 (Word用)
-                with st.spinner("📝 同時に、編集可能な文書ドラフトを作成中..."):
-                     # ここでテキストを生成して保存
-                    rewrite_text = generate_rewrite_text(edited_summary, edited_key_details, suggestions_list, doc_type=key_prefix)
-                    st.session_state[f"{key_prefix}_rewrite_text"] = rewrite_text
-
-                st.rerun()
+                        st.rerun()
 
         with col_result:
             st.subheader("📄 4. 改善された文書案")
             if st.session_state[KEY_IMAGE]:
-                tab_visual, tab_edit = st.tabs(["🎨 デザインプレビュー", "📝 編集用テキスト"])
-
-                with tab_visual:
-                    st.image(st.session_state[KEY_IMAGE], caption="AI生成プレビュー (レイアウト参考)", use_container_width=True)
-                    
-                    buf = io.BytesIO()
-                    st.session_state[KEY_IMAGE].save(buf, format="PNG")
-                    st.download_button(
-                        "⬇️ デザイン画像を保存 (PNG)", 
-                        data=buf.getvalue(), 
-                        file_name=f"improved_{key_prefix}.png", 
-                        mime="image/png", 
-                        key=f"{key_prefix}_dl_img_btn", 
-                        use_container_width=True
-                    )
-                
-                with tab_edit:
-                    st.markdown("#### 編集可能なドラフト")
-                    st.info("公務における実務利用（相互運用性）のために、レイアウト情報を保持したWordファイルをダウンロードできます。")
-                    
-                    # 生成されたMarkdownテキストを取得
-                    rewrite_text = st.session_state.get(f"{key_prefix}_rewrite_text", "")
-                    
-                    # プレビュー表示
-                    st.text_area("Markdownプレビュー", value=rewrite_text, height=300)
-                    
-                    if rewrite_text:
-                        # Word変換
-                        docx_file = create_docx_from_markdown(rewrite_text)
-                        
-                        col_dl_md, col_dl_word = st.columns(2)
-                        with col_dl_md:
-                            st.download_button(
-                                "⬇️ Markdownを保存",
-                                data=rewrite_text,
-                                file_name=f"draft_{key_prefix}.md",
-                                mime="text/markdown",
-                                use_container_width=True
-                            )
-                        with col_dl_word:
-                            st.download_button(
-                                "⬇️ Word形式 (.docx) で保存", 
-                                data=docx_file, 
-                                file_name=f"draft_{key_prefix}.docx", 
-                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", 
-                                key=f"{key_prefix}_dl_word_btn",
-                                type="primary",
-                                use_container_width=True
-                            )
-
+                st.image(st.session_state[KEY_IMAGE], caption="AI生成プレビュー", use_container_width=True)
+                with st.expander("🔍 プロンプトログ"): st.code(st.session_state[KEY_PROMPT], language="text")
+                st.write("修正したい場合は左記フォームを編集して再生成してください。")
+                buf = io.BytesIO()
+                st.session_state[KEY_IMAGE].save(buf, format="PNG")
+                st.download_button("⬇️ 画像を保存", data=buf.getvalue(), file_name=f"improved_{key_prefix}.png", mime="image/png", key=f"{key_prefix}_dl_btn", use_container_width=True)
             elif submitted: pass 
             else: st.info("👈 設定を確認し、「生成」ボタンを押してください")
 
