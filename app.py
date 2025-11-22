@@ -208,8 +208,17 @@ def verify_safety(file_bytes, file_type, initial_json, model_schema):
         return initial_json
 
 def analyze_sludge(file_bytes, file_type, doc_type="flyer", status_container=None):
-    prompt_notice = "You are a Behavioral Scientist. Audit the provided Official Administrative Notice. Output in JSON."
-    prompt_flyer = "You are a Public Information Design Specialist. Audit the provided flyer. Output in JSON."
+    # バイアス対策: 公務員への改善提案自体が偏らないように指示を追加
+    bias_instruction = """
+    **BIAS & INCLUSION PROTOCOLS:**
+    1. Check if the document uses gendered or exclusionary language.
+    2. Ensure your 'Improvement Suggestions' strictly adhere to Inclusive Design principles.
+    3. Recommendations must be culturally neutral and accessible to diverse populations.
+    """
+    
+    prompt_notice = f"You are a Behavioral Scientist. Audit the provided Official Administrative Notice. {bias_instruction} Output in JSON."
+    prompt_flyer = f"You are a Public Information Design Specialist. Audit the provided flyer. {bias_instruction} Output in JSON."
+    
     system_prompt = prompt_notice if doc_type == "notice" else prompt_flyer
     try:
         if status_container: status_container.markdown("🔄 **Phase 1/2:** Executing Behavioral Science Analysis...")
@@ -226,7 +235,17 @@ def analyze_sludge(file_bytes, file_type, doc_type="flyer", status_container=Non
         return None
 
 def analyze_citizen_doc(file_bytes, file_type, status_container=None):
-    system_prompt = "You are a High-Reliability AI Assistant. Analyze the document and create a clear, Plain English explanation. Output in JSON."
+    # バイアス対策: 市民への説明文が公平かつ中立であることを強制
+    system_prompt = """
+    You are a High-Reliability AI Assistant. Analyze the document and create a clear, Plain English explanation.
+    
+    **MANDATORY BIAS & SAFETY PROTOCOLS:**
+    1. **Inclusive Language:** Use gender-neutral terms (e.g., 'they/them', 'parent', 'applicant') instead of gendered ones (e.g., 'he/she', 'mother/father').
+    2. **Cultural Neutrality:** Avoid idioms, metaphors, or references specific to a single culture. Use universal plain language (CEFR B1 level).
+    3. **Objectivity:** Present facts without judgmental adjectives. Avoid assumptions about the user's family structure or financial status.
+    
+    Output strictly in JSON.
+    """
     try:
         if status_container: status_container.markdown("🔄 **Phase 1/2:** Interpreting and Summarizing...")
         response = client.models.generate_content(
@@ -243,8 +262,13 @@ def analyze_citizen_doc(file_bytes, file_type, status_container=None):
 
 def generate_improved_image(summary, key_details, suggestions_list, aspect_ratio="3:4", doc_type="flyer"):
     formatted_suggestions = "\n".join([f"- {s}" for s in suggestions_list])
+    
+    # バイアス対策: 画像生成時に多様性を確保する指示を追加
+    bias_prompt = "**DESIGN REQUIREMENT:** Ensure diverse representation in any human imagery. Use high-contrast colors for accessibility (WCAG AA compliance)."
+    
     prompt_notice = f"""
     Generate a **DIGITAL BORN PDF DOCUMENT**. NO paper texture. Background: #FFFFFF.
+    {bias_prompt}
     **⚠️ FOOTER:** "**※ AI-Generated Draft for Review Only**"
     CONTEXT: {summary}
     DETAILS: {key_details}
@@ -252,6 +276,7 @@ def generate_improved_image(summary, key_details, suggestions_list, aspect_ratio
     """
     prompt_flyer = f"""
     Create a **High-Quality Digital Graphic Design Asset**.
+    {bias_prompt}
     **⚠️ FOOTER:** "**※ AI-Generated Draft Image**"
     CONTEXT: {summary}
     DETAILS: {key_details}
