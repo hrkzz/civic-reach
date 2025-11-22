@@ -8,6 +8,9 @@ from pydantic import BaseModel, Field
 from PIL import Image
 import io
 import pypdf
+from docx import Document
+from docx.shared import Pt
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 # 1. 環境変数の読み込み
 load_dotenv()
@@ -31,80 +34,29 @@ client = genai.Client(api_key=API_KEY)
 def apply_custom_styles():
     st.markdown("""
     <style>
-        /* Google Fonts (Noto Sans JP) のインポート */
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&display=swap');
-
-        /* 全体のフォント設定 */
         html, body, [class*="css"] {
             font-family: 'Noto Sans JP', sans-serif !important;
             color: #000000 !important;
         }
-
-        /* メインエリア上部の空白を削除 */
         .block-container {
             padding-top: 1rem !important;
             padding-bottom: 5rem !important;
         }
-
-        /* タイトル (h1) */
-        h1 {
-            font-size: 2.5rem !important;
-            font-weight: 700 !important;
-            padding-bottom: 0rem !important;
-            margin-bottom: 0.5rem !important;
-        }
-
-        /* サブヘッダー (h3) */
-        h3 {
-            font-size: 1.2rem !important;
-            font-weight: 700 !important;
-            color: #334155 !important;
-            margin-top: 0.2rem !important;
-            padding-top: 0rem !important;
-            margin-bottom: 0.5rem !important;
-        }
-        
-        /* 区切り線 (st.divider) */
-        hr {
-            margin-top: 0.5rem !important;
-            margin-bottom: 0.5rem !important;
-        }
-        
-        /* テキスト */
-        p, li, .stMarkdown {
-            font-size: 1rem !important;
-            line-height: 1.6 !important;
-            margin-bottom: 0.5rem !important;
-        }
-        
-        /* Expanderのヘッダー */
-        .streamlit-expanderHeader {
-            font-family: 'Noto Sans JP', sans-serif !important;
-            font-weight: 700 !important;
-            color: #000000 !important;
-        }
-        
-        /* Expander内の本文テキストを黒にする */
-        .streamlit-expanderContent p, 
-        .streamlit-expanderContent li, 
-        .streamlit-expanderContent div {
-            color: #000000 !important;
-        }
-        
-        /* Info boxの調整 */
-        .stAlert {
-            padding: 0.5rem !important;
-        }
-        
-        /* メトリクスの文字サイズ調整 */
-        [data-testid="stMetricValue"] {
-            font-size: 2.5rem !important;
-        }
+        h1 { font-size: 2.5rem !important; font-weight: 700 !important; margin-bottom: 0.5rem !important; }
+        h3 { font-size: 1.2rem !important; font-weight: 700 !important; color: #334155 !important; }
+        hr { margin-top: 0.5rem !important; margin-bottom: 0.5rem !important; }
+        p, li, .stMarkdown { font-size: 1rem !important; line-height: 1.6 !important; }
+        .streamlit-expanderHeader { font-weight: 700 !important; color: #000000 !important; }
+        .streamlit-expanderContent p, .streamlit-expanderContent li, .streamlit-expanderContent div { color: #000000 !important; }
+        .stAlert { padding: 0.5rem !important; }
+        [data-testid="stMetricValue"] { font-size: 2.5rem !important; }
     </style>
     """, unsafe_allow_html=True)
 
 # --- データ構造の定義 (Pydantic) ---
 
+# 【職員向け】
 class CostDetail(BaseModel):
     deduction: int = Field(..., description="この項目の減点数 (0-25)。")
     comment: str = Field(..., description="なぜこの点数なのか、具体的な分析と解説。")
@@ -117,19 +69,26 @@ class EastSuggestions(BaseModel):
 
 class SludgeAudit(BaseModel):
     total_score: int = Field(..., description="100点満点から各コストの減点を引いた総合スコア。")
-    overall_summary: str = Field(..., description="文書全体の概要（Context）。")
+    overall_summary: str = Field(..., description="文書全体の概要。")
+    evaluation_summary: str = Field(..., description="監査結果の総評。")
+    improvement_summary: str = Field(..., description="改善策の概要。")
     
-    evaluation_summary: str = Field(..., description="今回の監査結果の総評。なぜこのスコアになったのか、全体的なスラッジの傾向についての簡潔な解説。★重要: improvement_summaryと同じくらいの文字数（200文字程度）で記述すること。")
-
-    improvement_summary: str = Field(..., description="EASTフレームワークに基づく改善策の全体的な方向性と概要。★重要: evaluation_summaryと同じくらいの文字数（200文字程度）で記述すること。")
-
-    key_details: str = Field(..., description="文書に含まれる絶対に変えてはいけない事実情報（日時、期限、場所、電話番号、URL、金額など）を箇条書きで抽出したもの。")
+    key_details: str = Field(..., description="【超重要】文書に含まれる事実情報の完全な抽出。期限、金額、参照番号、法的根拠、不服申し立て条件、問い合わせ先電話番号などを漏れなく記載すること。")
     
     search_cost: CostDetail = Field(..., description="探索コストの評価")
     decision_cost: CostDetail = Field(..., description="決断コストの評価")
     cognitive_cost: CostDetail = Field(..., description="認知的コストの評価")
     emotional_cost: CostDetail = Field(..., description="感情的コストの評価")
     east_suggestions: EastSuggestions = Field(..., description="EASTフレームワークに基づく改善案詳細")
+
+# 【国民向け】
+class CitizenGuide(BaseModel):
+    sludge_observation: str = Field(..., description="この文書がなぜ分かりにくいのか、4つのコスト（探索・決断・認知・感情）の観点からの分析結果。")
+    simple_summary: str = Field(..., description="文書の概要。「誰に」「何を」求めているか。正確性を最優先し、条件（もし〜なら）を含めて記述すること。")
+    action_guide_markdown: str = Field(..., description="ユーザーが取るべき行動のガイド。Markdown形式の箇条書き（- ）を使用し、条件分岐（同意する場合/しない場合など）をインデントで表現して構造化すること。チェックボックスは使用しない。")
+    risks_and_penalties: list[str] = Field(..., description="★最重要：無視した場合の不利益、罰則、遅延損害金、法的措置の可能性など、警告情報をリスト化。")
+    required_documents: list[str] = Field(..., description="手続きに必要な書類、身分証、番号などのリスト。")
+    important_dates: list[str] = Field(..., description="期限、支払日、実施日などの重要な日付のリスト。")
 
 # --- ユーティリティ関数 ---
 def get_file_aspect_ratio(file_bytes, file_type):
@@ -155,34 +114,36 @@ def get_file_aspect_ratio(file_bytes, file_type):
         pass
     return "3:4"
 
-# --- 分析ロジック関数 (キャッシュ有効) ---
+# --- 分析ロジック関数 (職員向け) ---
 @st.cache_data(show_spinner=False)
-def analyze_sludge(file_bytes, file_type):
-    system_prompt = """
-    あなたはOECDの行動科学専門家（Behavioral Scientist）です。
-    提供された行政文書（画像またはPDF）に対して「スラッジ監査」を行ってください。
+def analyze_sludge(file_bytes, file_type, doc_type="flyer"):
+    prompt_notice = """
+    あなたはG7政府機関に所属する「行動科学者」兼「法務監査官」です。
+    提供された「公式な行政通知」に対して、信頼性を担保しつつ、受取人のコンプライアンス（法令遵守）を最大化するための監査を行ってください。
 
-    ## 重要: UIレイアウトのための指示
-    - `evaluation_summary`（評価総評）と `improvement_summary`（改善の方向性）は、UI上で左右に並べて表示されます。
-    - デザインの崩れを防ぐため、**必ずこの2つの要約の文字数（分量）を揃えてください**。
-    - 目安: 日本語でそれぞれ約200〜250文字程度（3〜4文）。
+    **ターゲット文書:** 税務通知、督促状、決定通知書など。
+    **最重要ミッション:** 1. **情報の完全性 (Completeness):** 金額、期限、条件分岐（同意する/しない）、不服申し立ての権利、無視した場合の法的リスク（差押え、追徴金など）を全て網羅すること。曖昧な要約は許されません。
+    2. **Sludgeの排除:** 脅し文句ではなく、手続きの透明性を高めることで、自発的な納税や手続きを促すこと。
 
     ## 1. 重要情報の抽出 (Key Details)
-    デザイン再作成時にハルシネーションを防ぐため、日時・場所・連絡先・条件・金額などの事実情報を正確に抽出してください。
+    * 文書内の数値、日付、連絡先は一字一句正確に抽出してください。
+    * 「もし〜なら」という条件分岐（例：金額に同意できない場合の手続き）は絶対に取りこぼさないでください。
 
-    ## 2. 文書概要と評価総評 (Summaries)
-    - overall_summary: 文書の内容自体の客観的な要約（Context）。
-    - evaluation_summary: 【重要】今回の監査結果の総評。なぜこのスコアになったのか、全体的なスラッジの傾向を解説。**文字数をimprovement_summaryと揃えること。**
-
-    ## 3. スコアリング (100点満点)
-    4つの心理的コスト（Search, Decision, Cognitive, Emotional）について減点評価し、解説してください。
-
-    ## 4. 改善案 (EASTフレームワーク)
-    - improvement_summary: 改善策の全体的な方向性。**文字数をevaluation_summaryと揃えること。**
-    - east_suggestions: Easy, Attractive, Social, Timelyの各観点での詳細な改善案。
+    ## 2. 評価と改善 (EAST Framework)
+    * **Easy:** 複雑な法的手続きが、ステップバイステップで整理されているか？
+    * **Attractive:** 重要な警告情報（期限・リスク）が視覚的に埋もれていないか？（Search Cost）
+    * **Social:** 公的機関としての威厳と正当性が担保されているか？
+    * **Timely:** 期限までの猶予と、遅れた場合の具体的デメリットが明記されているか？
 
     出力は必ず指定されたJSON形式で行ってください。
     """
+
+    prompt_flyer = """
+    あなたは自治体の「広報デザイン専門家」です。広報チラシに対して、住民の参加意欲を高めるための監査を行ってください。
+    出力は必ず指定されたJSON形式で行ってください。
+    """
+
+    system_prompt = prompt_notice if doc_type == "notice" else prompt_flyer
 
     try:
         response = client.models.generate_content(
@@ -190,13 +151,8 @@ def analyze_sludge(file_bytes, file_type):
             contents=[
                 types.Content(
                     parts=[
-                        types.Part(text="この文書を監査し、詳細なJSONレポートを出力してください。"),
-                        types.Part(
-                            inline_data=types.Blob(
-                                mime_type=file_type,
-                                data=file_bytes
-                            )
-                        )
+                        types.Part(text="この行政文書を厳格に監査し、JSONで出力してください。Key Detailsは漏れなく抽出してください。"),
+                        types.Part(inline_data=types.Blob(mime_type=file_type, data=file_bytes))
                     ]
                 )
             ],
@@ -208,71 +164,112 @@ def analyze_sludge(file_bytes, file_type):
             )
         )
         return json.loads(response.text)
-
     except Exception as e:
         st.error(f"分析エラー: {e}")
         return None
 
-# --- 画像生成関数 ---
+# --- 分析ロジック関数 (国民向け) ---
+@st.cache_data(show_spinner=False)
+def analyze_citizen_doc(file_bytes, file_type):
+    system_prompt = """
+    あなたは、行政手続きを支援する「高信頼性AIアシスタント」です。
+    提供された文書を分析し、市民向けの解説を作成してください。
+
+    **STEP 1: スラッジ（阻害要因）の監査**
+    まず、以下の4つの観点でこの文書の「分かりにくさ」を分析してください。
+    * **Search Cost (探索コスト):** 重要な情報（期限や金額）が見つけにくいか？
+    * **Decision Cost (決断コスト):** 「次に何をすべきか」の選択肢が複雑か？
+    * **Cognitive Cost (認知的コスト):** 専門用語や受動態が多く、理解が難しいか？
+    * **Emotional Cost (感情的コスト):** 威圧的で、読むのが怖いと感じさせるか？
+    → この分析結果を `sludge_observation` に記述してください。
+
+    **STEP 2: ガイドの作成**
+    STEP 1で特定した「分かりにくさ」を解消するように、以下の解説を作成してください。
+    
+    1. **Simple Summary:** 文書の目的と結論。Cognitive Costを下げるため、平易な言葉で。
+    2. **Action Guide (Markdown):** Decision Costを下げるため、条件分岐（もし〜なら）をインデントで構造化して記述。
+    3. **Risks & Penalties:** Emotional Costに配慮しつつ、事実としてリスクを明確に伝える（隠さない）。
+    4. **Required Documents:** Search Costを下げるため、必要なものをリスト化。
+    5. **Important Dates:** 期限を明確に。
+
+    出力は必ず指定されたJSON形式で行ってください。
+    """
+
+    try:
+        response = client.models.generate_content(
+            model="gemini-2.0-flash", 
+            contents=[
+                types.Content(
+                    parts=[
+                        types.Part(text="この文書をスラッジ監査した上で、市民向けに分かりやすく解説してください。"),
+                        types.Part(inline_data=types.Blob(mime_type=file_type, data=file_bytes))
+                    ]
+                )
+            ],
+            config=types.GenerateContentConfig(
+                system_instruction=system_prompt,
+                response_mime_type="application/json",
+                response_schema=CitizenGuide,
+                temperature=0.0, 
+            )
+        )
+        return json.loads(response.text)
+    except Exception as e:
+        st.error(f"分析エラー: {e}")
+        return None
+
+# --- 画像生成関数 (職員向け・厳格化・AI明示) ---
 def generate_improved_image(summary, key_details, suggestions_list, aspect_ratio="3:4", doc_type="flyer"):
     formatted_suggestions = "\n".join([f"- {s}" for s in suggestions_list])
 
-    # 1. チラシ用プロンプト
-    prompt_flyer = f"""
-    Create a **High-Quality Digital Graphic Design Asset** for a government flyer.
+    # 通知文用：デジタルネイティブPDF風 + AI透かし
+    prompt_notice = f"""
+    Generate a **DIGITAL BORN PDF DOCUMENT** (Direct Export style) of a formal Government Letter/Notice.
     
-    **IMPORTANT STYLE RULES:**
-    - **DO NOT** generate a photo of a physical paper on a table.
-    - **DO NOT** use 3D perspective, shadows, or camera angles.
-    - **MUST BE** a flat 2D vector-style layout.
-    - **FULL FRAME:** The design should fill the entire image canvas (edge-to-edge).
-    - **JAPANESE TEXT:** Use authentic Japanese typography.
+    **🚫 VISUAL STYLE CONSTRAINTS (Strictly No Scanned Look):**
+    - **NO** paper texture, **NO** shadows, **NO** folding marks, **NO** scan noise.
+    - **NO** physical desk background. The background must be **#FFFFFF (Pure Digital White)**.
+    - **NO** handwriting fonts. Use crisp, digital vector-style fonts only.
+    - **NO** flyer elements (no colorful graphics, no big cartoons).
+    
+    **✅ REQUIRED LAYOUT (Word Processor Style):**
+    - **Format:** Standard A4 Letter layout. Text should be crisp and sharp (Anti-aliased).
+    - **Header:** Minimalist Agency Logo (Top Left) and Reference Info (Top Right).
+    - **Title:** Bold, centered, serif font (e.g., "NOTICE OF TAX ADJUSTMENT").
+    - **Body Text:** Professional serif font (Times New Roman or Georgia), 11pt, high contrast black. Left-aligned.
+    - **Key Info Box:** A simple 1px black border box containing the "Deadline" and "Amount". This should look like a table in Word.
+    
+    **⚠️ MANDATORY FOOTER (AI DISCLAIMER):**
+    - You MUST include a small, light gray footer text at the very bottom right or center of the page saying: **"※ AI-Generated Draft for Review Only"**. This is required to distinguish it from a real official document.
+    
+    **CONTENT TO TYPESET:**
+    CONTEXT: {summary}
+    DETAILS: {key_details}
+    IMPROVEMENTS: {formatted_suggestions}
+    """
+
+    # チラシ用 + AI透かし
+    prompt_flyer = f"""
+    Create a **High-Quality Digital Graphic Design Asset** for a government flyer/poster.
+    
+    **Visual Style:**
+    - Friendly, modern, and approachable.
+    - Use illustrations and colors to attract attention.
+    - Clear hierarchy.
+    
+    **⚠️ MANDATORY FOOTER:**
+    - Include a small footer text: **"※ AI-Generated Draft Image"** on the bottom edge.
 
     # 1. CONTEXT:
     {summary}
 
-    # 2. REQUIRED TEXT (Content must be exact):
+    # 2. REQUIRED TEXT:
     {key_details}
 
-    # 3. DESIGN IMPROVEMENTS (EAST Framework):
-    {formatted_suggestions}
-
-    Visual Style:
-    - Clean, minimalist, and professional.
-    - High contrast for readability (Universal Design).
-    - Friendly and trustworthy color palette.
-    - Information hierarchy using font sizes and whitespace.
-    """
-
-    # 2. 通知文用プロンプト
-    prompt_notice = f"""
-    Create a **DIGITAL FLAT IMAGE (PDF EXPORT)** of an Official Government Notice.
-    
-    **CRITICAL VISUAL CONSTRAINTS (DO NOT IGNORE):**
-    1. **NO PHOTOREALISM:** This is NOT a photo of a paper on a desk. Do NOT include shadows, wrinkles, paper texture, background scenery, or camera perspective.
-    2. **DIGITAL FLAT 2D:** This must look like a direct digital screenshot or PDF export. Everything must be perfectly flat and aligned.
-    3. **PURE WHITE BACKGROUND:** The background color must be Hex #FFFFFF (Pure White). No beige, cream, or off-white paper tones.
-    4. **FULL CANVAS / NO CROPPING:** The document borders must match the image borders exactly. Do not cut off the bottom or sides. Show the entire page content.
-
-    **STYLE & CONTENT:**
-    - **Structure:** Formal government letterhead (like IRS/Tax Agency).
-    - **Font:** Professional Serif (Times) or Sans-Serif (Arial). Black text only.
-    - **Layout:**
-        - **TOP:** Agency Name/Logo and a **"KEY INFORMATION BOX"** (Bordered box with Deadline, Amount, Action).
-        - **MIDDLE:** Main body text (Dense, official explanations).
-        - **BOTTOM:** Contact info and next steps.
-
-    # 1. DOCUMENT CONTEXT:
-    {summary}
-
-    # 2. REQUIRED KEY DETAILS (Must be accurate):
-    {key_details}
-
-    # 3. EAST FRAMEWORK SUGGESTIONS:
+    # 3. DESIGN IMPROVEMENTS:
     {formatted_suggestions}
     """
 
-    # プロンプトの選択
     target_prompt = prompt_notice if doc_type == "notice" else prompt_flyer
     
     try:
@@ -281,10 +278,7 @@ def generate_improved_image(summary, key_details, suggestions_list, aspect_ratio
             contents=target_prompt,
             config=types.GenerateContentConfig(
                 tools=[{"google_search": {}}], 
-                image_config=types.ImageConfig(
-                    aspect_ratio=aspect_ratio,
-                    image_size="2K"
-                )
+                image_config=types.ImageConfig(aspect_ratio=aspect_ratio, image_size="2K")
             )
         )
         for part in response.parts:
@@ -295,41 +289,125 @@ def generate_improved_image(summary, key_details, suggestions_list, aspect_ratio
         st.error(f"画像生成エラー: {e}")
         return None, target_prompt
 
-# --- 共通コンポーネント関数 ---
-def render_tab_content(key_prefix):
+# --- テキスト生成 & Word変換関数 (Interoperability強化) ---
+
+@st.cache_data(show_spinner=False)
+def generate_rewrite_text(summary, key_details, suggestions_list, doc_type="notice"):
     """
-    通知文・チラシの各タブの中身を描画する共通関数。
+    改善された文書のテキスト本文をMarkdown形式で生成する
+    """
+    formatted_suggestions = "\n".join([f"- {s}" for s in suggestions_list])
+    
+    # プロンプト：構造化されたMarkdownを出力させる
+    system_prompt = """
+    あなたは行政文書のライティング専門家（Plain Language Expert）です。
+    提供された情報に基づき、市民に伝わりやすい「改善版の通知文」を作成してください。
+    
+    **出力形式:** Markdown
+    * タイトルは `#` (H1)
+    * サブタイトル・見出しは `##` (H2)
+    * 重要な強調箇所は `**bold**`
+    * 箇条書きは `-`
+    
+    **要件:**
+    * 威圧的な表現を避け、丁寧かつ明確に。
+    * 「いつ」「いくら」「どうすればいいか」を明確に構造化する。
+    * 挨拶文などの形式的な定型句も適切に含めること。
     """
     
-    # Session Stateのキー定義
+    user_prompt = f"""
+    以下の情報を元に、行政文書（{doc_type}）のリライト案を作成してください。
+
+    # 1. 文書の背景 (Context)
+    {summary}
+
+    # 2. 必須項目 (Key Details - Must Include)
+    {key_details}
+
+    # 3. 改善のポイント (Instructions)
+    {formatted_suggestions}
+    """
+
+    try:
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=[
+                types.Content(parts=[types.Part(text=user_prompt)])
+            ],
+            config=types.GenerateContentConfig(
+                system_instruction=system_prompt,
+                temperature=0.7
+            )
+        )
+        return response.text
+    except Exception as e:
+        st.error(f"テキスト生成エラー: {e}")
+        return ""
+
+def create_docx_from_markdown(markdown_text):
+    """
+    簡易的なMarkdownパーサーを使ってWordファイルを生成する
+    """
+    doc = Document()
+    
+    # 基本スタイル設定（日本語フォント設定などは環境依存があるため、今回は標準設定で実装）
+    style = doc.styles['Normal']
+    font = style.font
+    font.name = 'Meiryo' # Windows/Office環境向けにメイリオなどを指定しておくと親切
+    font.size = Pt(10.5)
+
+    for line in markdown_text.split('\n'):
+        line = line.strip()
+        if not line:
+            continue
+        
+        if line.startswith('# '):
+            # タイトル (H1)
+            p = doc.add_heading(line[2:], level=1)
+            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        elif line.startswith('## '):
+            # 見出し (H2)
+            doc.add_heading(line[3:], level=2)
+        elif line.startswith('### '):
+             # 見出し (H3)
+            doc.add_heading(line[4:], level=3)
+        elif line.startswith('- ') or line.startswith('* '):
+            # 箇条書き
+            p = doc.add_paragraph(line[2:], style='List Bullet')
+        else:
+            # 本文（ボールド処理は簡易的に実装）
+            p = doc.add_paragraph()
+            parts = line.split('**')
+            for i, part in enumerate(parts):
+                run = p.add_run(part)
+                if i % 2 == 1: # 奇数番目は ** で囲まれていた部分
+                    run.bold = True
+                    
+    # メモリ上のバイナリとして保存
+    buffer = io.BytesIO()
+    doc.save(buffer)
+    buffer.seek(0)
+    return buffer
+
+# --- 共通コンポーネント: 職員向け ---
+def render_tab_content(key_prefix):
     KEY_RESULT = f"{key_prefix}_audit_result"
     KEY_IMAGE = f"{key_prefix}_generated_image"
     KEY_PROMPT = f"{key_prefix}_last_prompt"
     KEY_UPLOADED_NAME = f"{key_prefix}_last_uploaded"
     KEY_ASPECT = f"{key_prefix}_target_aspect_ratio"
 
-    # 初期化
     if KEY_RESULT not in st.session_state: st.session_state[KEY_RESULT] = None
     if KEY_IMAGE not in st.session_state: st.session_state[KEY_IMAGE] = None
     if KEY_PROMPT not in st.session_state: st.session_state[KEY_PROMPT] = ""
     if KEY_UPLOADED_NAME not in st.session_state: st.session_state[KEY_UPLOADED_NAME] = None
     
-    # ==========================================
-    #  上段エリア: アップロード & 分析レポート
-    # ==========================================
-    
     st.subheader("📂 1. ファイルアップロード / 分析実行")
-    
     has_result = st.session_state[KEY_RESULT] is not None
-
     with st.expander("パネルを開く/閉じる", expanded=not has_result):
         uploaded_file = st.file_uploader(
-            "ファイルをドラッグ＆ドロップまたは選択", 
-            type=["pdf", "png", "jpg", "jpeg"],
-            key=f"{key_prefix}_uploader",
-            label_visibility="collapsed"
+            "ファイルをドラッグ＆ドロップまたは選択", type=["pdf", "png", "jpg", "jpeg"], key=f"{key_prefix}_uploader", label_visibility="collapsed"
         )
-
         if uploaded_file is not None:
             if st.session_state[KEY_UPLOADED_NAME] != uploaded_file.name:
                 st.session_state[KEY_RESULT] = None
@@ -340,174 +418,252 @@ def render_tab_content(key_prefix):
                 st.rerun()
 
             if st.button("🚀 分析を実行", type="primary", key=f"{key_prefix}_analyze_btn", use_container_width=True):
-                with st.spinner("行動科学の観点から分析中..."):
+                with st.spinner("行動科学の観点から詳細分析中（法的要件・リスク確認を含む）..."):
                     file_bytes = uploaded_file.getvalue()
                     file_type = uploaded_file.type
-                    result = analyze_sludge(file_bytes, file_type)
+                    result = analyze_sludge(file_bytes, file_type, doc_type=key_prefix)
                     if result:
                         st.session_state[KEY_RESULT] = result
                         st.session_state[KEY_IMAGE] = None
                         st.rerun()
 
-    # --- 2. 監査レポート表示 ---
     if st.session_state[KEY_RESULT]:
         result = st.session_state[KEY_RESULT]
-        
         st.subheader("📊 2. 評価レポート")
         with st.container(border=True):
-            
             score = result.get("total_score", 0)
             c_score_main, c_score_sub = st.columns([1, 3], gap="large")
-            
             with c_score_main:
                 st.metric("総合評価スコア", f"{score}/100")
-            
             with c_score_sub:
-                st.write("") 
-                st.write("スコアメーター")
-                st.progress(score)
-                if score >= 80:
-                    st.caption("素晴らしい！非常に分かりやすい文書です。")
-                elif score >= 60:
-                    st.caption("平均的です。いくつかの改善で大きく向上します。")
-                else:
-                    st.caption("改善の余地が大きいです。抜本的な見直しを推奨します。")
-            
+                st.write(""); st.write("スコアメーター"); st.progress(score)
+                if score >= 80: st.caption("素晴らしい！非常に分かりやすい文書です。")
+                elif score >= 60: st.caption("平均的です。いくつかの改善で大きく向上します。")
+                else: st.caption("改善の余地が大きいです。抜本的な見直しを推奨します。")
             st.divider()
-
+            
             col_eval, col_improve = st.columns(2, gap="large")
-
-            # 左カラム: 評価
             with col_eval:
                 st.markdown("#### 🧐 評価総評")
                 st.write(result.get("evaluation_summary"))
-                
                 st.write("") 
-                with st.expander("▼ 詳細評価 (4つのコスト)", expanded=False):
+                with st.expander("▼ 詳細評価", expanded=False):
                     def display_cost(label, data, icon):
                         s = 25 - data.get('deduction', 0)
                         st.markdown(f"**{icon} {label} ({s}/25)**") 
-                        # ★修正: st.info(..., icon="ℹ️") を st.write() に変更
                         st.write(data.get('comment'))
-                        st.write("") # 余白
-                        
-                    display_cost("探索コスト", result.get("search_cost"), "🔍")
-                    display_cost("決断コスト", result.get("decision_cost"), "🤔")
-                    display_cost("認知的コスト", result.get("cognitive_cost"), "🧠")
-                    display_cost("感情的コスト", result.get("emotional_cost"), "❤️")
-
-            # 右カラム: 改善
+                        st.write("")
+                    display_cost("探索スコア", result.get("search_cost"), "🔍")
+                    display_cost("決断スコア", result.get("decision_cost"), "🤔")
+                    display_cost("認知的スコア", result.get("cognitive_cost"), "🧠")
+                    display_cost("感情的スコア", result.get("emotional_cost"), "❤️")
             with col_improve:
                 st.markdown("#### ✨ 改善の方向性")
                 st.write(result.get("improvement_summary"))
-
                 st.write("") 
-                with st.expander("▼ 詳細改善案 (EASTフレームワーク)", expanded=False):
+                with st.expander("▼ 詳細改善案", expanded=False):
                     east = result.get("east_suggestions", {})
-                    
-                    # ★修正: st.success() を st.write() に変更
-                    st.markdown("**😌 Easy (かんたん)**")
-                    st.write(east.get('easy'))
-                    st.write("") 
-
-                    st.markdown("**✨ Attractive (印象的)**")
-                    st.write(east.get('attractive'))
-                    st.write("")
-
-                    st.markdown("**🗣️ Social (社会的)**")
-                    st.write(east.get('social'))
-                    st.write("")
-
-                    st.markdown("**⏱️ Timely (タイムリー)**")
-                    st.write(east.get('timely'))
-                    st.write("")
+                    st.markdown("**😌 Easy**"); st.write(east.get('easy')); st.write("") 
+                    st.markdown("**✨ Attractive**"); st.write(east.get('attractive')); st.write("")
+                    st.markdown("**🗣️ Social**"); st.write(east.get('social')); st.write("")
+                    st.markdown("**⏱️ Timely**"); st.write(east.get('timely')); st.write("")
         
-        # ★修正: 導線デザイン (横並び・一行表示)
-        st.markdown("""
-        <div style="display: flex; align-items: center; justify-content: center; gap: 10px; padding: 20px; margin-top: 10px; margin-bottom: 10px;">
-            <span style="font-size: 2rem;">⬇️</span>
-            <span style="color: #555; font-weight: bold; font-size: 1rem;">評価結果に基づき、改善版のデザインを作成します</span>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown("""<div style="display: flex; align-items: center; justify-content: center; gap: 10px; padding: 20px; margin-top: 10px; margin-bottom: 10px;"><span style="font-size: 2rem;">⬇️</span><span style="color: #555; font-weight: bold; font-size: 1rem;">評価結果に基づき、改善版のデザインを作成します</span></div>""", unsafe_allow_html=True)
 
-        # ==========================================
-        #  下段エリア: 画像生成設定 & 生成結果
-        # ==========================================
-        
         col_settings, col_result = st.columns([1, 1], gap="medium")
-        
-        # --- 左: 生成設定 ---
         with col_settings:
-            st.subheader("🎨 3. 画像生成設定")
-            st.markdown("AIの抽出内容を確認・編集し、デザインを生成してください。")
-
+            st.subheader("📝 3. 生成設定")
+            st.markdown("AIの抽出内容を確認し、改善案を生成してください。")
             with st.form(f"{key_prefix}_generation_settings_form"):
-                edited_summary = st.text_area(
-                    "① 文書の概要・本文 (Context & Main Body)", 
-                    value=result.get("overall_summary"), 
-                    height=150, 
-                    key=f"{key_prefix}_input_summary"
-                )
-
-                edited_key_details = st.text_area(
-                    "② 記載すべき重要情報 (Required Details)", 
-                    value=result.get("key_details"), 
-                    height=120,
-                    key=f"{key_prefix}_input_details"
-                )
-
+                edited_summary = st.text_area("① 文書の概要 (Context)", value=result.get("overall_summary"), height=100, key=f"{key_prefix}_input_summary")
+                edited_key_details = st.text_area("② 重要要件 (Must Include)", value=result.get("key_details"), height=200, key=f"{key_prefix}_input_details", help="金額、期限、条件分岐など、文書に必ず記載しなければならない事項")
                 east = result.get("east_suggestions", {})
-                default_suggestions = (
-                    f"Easy: {east.get('easy')}\n"
-                    f"Attractive: {east.get('attractive')}\n"
-                    f"Social: {east.get('social')}\n"
-                    f"Timely: {east.get('timely')}"
-                )
-                edited_suggestions_text = st.text_area(
-                    "③ デザイン改善指示 (EAST Suggestions)", 
-                    value=default_suggestions, 
-                    height=150,
-                    key=f"{key_prefix}_input_suggestions"
-                )
-
-                submitted = st.form_submit_button("✨ 設定内容でデザインを生成 / 再生成", type="secondary", use_container_width=True)
-
+                default_suggestions = f"Easy: {east.get('easy')}\nAttractive: {east.get('attractive')}\nSocial: {east.get('social')}\nTimely: {east.get('timely')}"
+                edited_suggestions_text = st.text_area("③ 改善指示 (Instructions)", value=default_suggestions, height=150, key=f"{key_prefix}_input_suggestions")
+                submitted = st.form_submit_button("📄 改善版ドキュメントを生成", type="secondary", use_container_width=True)
             if submitted:
-                with st.spinner("Gemini 3 Pro がデザインを生成中..."):
+                # 画像生成
+                with st.spinner("Gemini 3 Pro がレイアウトデザインを生成中..."):
                     suggestions_list = [line.strip() for line in edited_suggestions_text.split('\n') if line.strip()]
-                    
-                    image, used_prompt = generate_improved_image(
-                        edited_summary,
-                        edited_key_details,
-                        suggestions_list,
-                        aspect_ratio=st.session_state[KEY_ASPECT],
-                        doc_type=key_prefix 
-                    )
-                    
+                    image, used_prompt = generate_improved_image(edited_summary, edited_key_details, suggestions_list, aspect_ratio=st.session_state[KEY_ASPECT], doc_type=key_prefix)
                     if image:
                         st.session_state[KEY_IMAGE] = image
                         st.session_state[KEY_PROMPT] = used_prompt
+                # 【追加】テキスト生成 (Word用)
+                with st.spinner("📝 同時に、編集可能な文書ドラフトを作成中..."):
+                     # ここでテキストを生成して保存
+                    rewrite_text = generate_rewrite_text(edited_summary, edited_key_details, suggestions_list, doc_type=key_prefix)
+                    st.session_state[f"{key_prefix}_rewrite_text"] = rewrite_text
+
+                st.rerun()
+
+        with col_result:
+            st.subheader("📄 4. 改善された文書案")
+            if st.session_state[KEY_IMAGE]:
+                tab_visual, tab_edit = st.tabs(["🎨 デザインプレビュー", "📝 編集用テキスト"])
+
+                with tab_visual:
+                    st.image(st.session_state[KEY_IMAGE], caption="AI生成プレビュー (レイアウト参考)", use_container_width=True)
+                    
+                    buf = io.BytesIO()
+                    st.session_state[KEY_IMAGE].save(buf, format="PNG")
+                    st.download_button(
+                        "⬇️ デザイン画像を保存 (PNG)", 
+                        data=buf.getvalue(), 
+                        file_name=f"improved_{key_prefix}.png", 
+                        mime="image/png", 
+                        key=f"{key_prefix}_dl_img_btn", 
+                        use_container_width=True
+                    )
+                
+                with tab_edit:
+                    st.markdown("#### 編集可能なドラフト")
+                    st.info("公務における実務利用（相互運用性）のために、レイアウト情報を保持したWordファイルをダウンロードできます。")
+                    
+                    # 生成されたMarkdownテキストを取得
+                    rewrite_text = st.session_state.get(f"{key_prefix}_rewrite_text", "")
+                    
+                    # プレビュー表示
+                    st.text_area("Markdownプレビュー", value=rewrite_text, height=300)
+                    
+                    if rewrite_text:
+                        # Word変換
+                        docx_file = create_docx_from_markdown(rewrite_text)
+                        
+                        col_dl_md, col_dl_word = st.columns(2)
+                        with col_dl_md:
+                            st.download_button(
+                                "⬇️ Markdownを保存",
+                                data=rewrite_text,
+                                file_name=f"draft_{key_prefix}.md",
+                                mime="text/markdown",
+                                use_container_width=True
+                            )
+                        with col_dl_word:
+                            st.download_button(
+                                "⬇️ Word形式 (.docx) で保存", 
+                                data=docx_file, 
+                                file_name=f"draft_{key_prefix}.docx", 
+                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", 
+                                key=f"{key_prefix}_dl_word_btn",
+                                type="primary",
+                                use_container_width=True
+                            )
+
+            elif submitted: pass 
+            else: st.info("👈 設定を確認し、「生成」ボタンを押してください")
+
+# --- 新規コンポーネント: 国民向け ---
+def render_citizen_tab():
+    key_prefix = "citizen"
+    
+    KEY_RESULT = f"{key_prefix}_result"
+    KEY_UPLOADED_NAME = f"{key_prefix}_last_uploaded"
+
+    if KEY_RESULT not in st.session_state: st.session_state[KEY_RESULT] = None
+    if KEY_UPLOADED_NAME not in st.session_state: st.session_state[KEY_UPLOADED_NAME] = None
+
+    st.subheader("📂 1. ファイルアップロード")
+    st.markdown("難しい行政文書をアップロードしてください。AIが内容を詳細に読み解き、リスクや必要な手続きを整理します。")
+    
+    has_result = st.session_state[KEY_RESULT] is not None
+    with st.expander("パネルを開く/閉じる", expanded=not has_result):
+        uploaded_file = st.file_uploader(
+            "ファイルをドラッグ＆ドロップまたは選択", type=["pdf", "png", "jpg", "jpeg"], key=f"{key_prefix}_uploader", label_visibility="collapsed"
+        )
+        if uploaded_file is not None:
+            if st.session_state[KEY_UPLOADED_NAME] != uploaded_file.name:
+                st.session_state[KEY_RESULT] = None
+                st.session_state[KEY_UPLOADED_NAME] = uploaded_file.name
+                file_bytes = uploaded_file.getvalue()
+                st.rerun()
+
+            if st.button("🔍 文書を読み解く", type="primary", key=f"{key_prefix}_analyze_btn", use_container_width=True):
+                with st.spinner("AIが文書を詳細に解釈しています（リスク・条件分岐確認中）..."):
+                    file_bytes = uploaded_file.getvalue()
+                    file_type = uploaded_file.type
+                    result = analyze_citizen_doc(file_bytes, file_type)
+                    if result:
+                        st.session_state[KEY_RESULT] = result
                         st.rerun()
 
-        # --- 右: 生成結果 ---
-        with col_result:
-            st.subheader("🖼️ 4. 改善されたデザイン案")
-            
-            if st.session_state[KEY_IMAGE]:
-                st.image(st.session_state[KEY_IMAGE], caption="AI生成プレビュー", use_container_width=True)
-                
-                with st.expander("🔍 プロンプトログ"):
-                    st.code(st.session_state[KEY_PROMPT], language="text")
+    # 2. 解釈レポート
+    if st.session_state[KEY_RESULT]:
+        result = st.session_state[KEY_RESULT]
+        
+        st.subheader("📝 2. 文書解説レポート")
+        
+        with st.expander("🔍 なぜこの文書は分かりにくいのか？ (AI分析)", expanded=False):
+            st.info("AIは以下の「分かりにくさの要因（スラッジ）」を特定し、それらを解消するように解説を作成しました。")
+            st.write(result.get("sludge_observation"))
 
-                buf = io.BytesIO()
-                st.session_state[KEY_IMAGE].save(buf, format="PNG")
-                st.download_button("⬇️ 画像を保存", data=buf.getvalue(), file_name=f"improved_{key_prefix}.png", mime="image/png", key=f"{key_prefix}_dl_btn", use_container_width=True)
+        with st.container(border=True):
+            st.markdown("### 💡 つまり、どういうこと？")
+            st.info(result.get("simple_summary"), icon="💁")
             
-            elif submitted: 
-                 pass 
+            if result.get("risks_and_penalties"):
+                st.markdown("### ⚠️ 無視するとどうなる？ (リスク・罰則)")
+                for risk in result.get("risks_and_penalties", []):
+                    st.error(risk, icon="🚨")
+
+            st.divider()
+
+            st.markdown("### ✅ あなたがやるべきこと (Action Guide)")
+            with st.container(border=True):
+                st.markdown(result.get("action_guide_markdown"))
+
+            st.divider()
+
+            c1, c2 = st.columns(2, gap="large")
+            with c1:
+                st.markdown("### 📄 必要な書類・もの")
+                if result.get("required_documents"):
+                    for doc in result.get("required_documents", []):
+                        st.write(f"- {doc}")
+                else:
+                    st.write("特になし")
+
+            with c2:
+                st.markdown("### 📅 重要な日付")
+                if result.get("important_dates"):
+                    for date in result.get("important_dates", []):
+                        st.warning(f"🗓️ {date}")
+                else:
+                    st.write("特になし")
             
-            else:
-                st.info("👈 左側の設定を確認し、「生成」ボタンを押してください")
+        # --- フィードバックフォーム (Citizen Voice) ---
+        with st.container(border=True):
+            st.subheader("📢 政府に「分かりにくい」と伝える")
+            st.markdown("""
+            この文書が分かりにくいのは、あなたのせいではありません。
+            この分析結果を匿名で担当機関にフィードバックし、将来の文書改善に役立てることができます。
+            """)
+
+            with st.form(key=f"{key_prefix}_feedback_form"):
+                # AI分析結果からMarkdown記号を除去し、プレーンテキストで見やすく整形
+                raw_obs = result.get('sludge_observation', '専門用語が多く、手続きが複雑です。')
+                clean_obs = raw_obs.replace("**", "").replace("*", "-") # Bold除去、Bullet置換
+                
+                default_feedback = f"""【市民からのフィードバック】
+この通知書について、以下の改善を希望します。
+
+■ 気になった点
+{clean_obs}
+
+■ 要望
+より平易な言葉を使用し、リスク情報を明確にしてください。
+"""
+                
+                feedback_text = st.text_area("送信するメッセージ (AIが下書きを作成しました)", value=default_feedback, height=250)
+                
+                st.caption("※ 個人情報（名前や住所）は含めずに送信してください。あなたのフィードバックは統計データとして処理されます。")
+                
+                submit_feedback = st.form_submit_button("📨 担当機関に改善リクエストを送信", type="primary", use_container_width=True)
+            
+            if submit_feedback:
+                st.success("✅ 送信しました！あなたの声が、行政文書の改善に役立てられます。")
+                st.balloons()
+
 
 # --- メインアプリ ---
 def main():
@@ -523,14 +679,20 @@ def main():
         """
     )
 
-    # --- タブの作成 ---
-    tab_notice, tab_flyer = st.tabs(["通知文", "チラシ"])
+    tab_official_notice, tab_official_flyer, tab_citizen = st.tabs([
+        "【職員向け】通知文改善", 
+        "【職員向け】チラシ改善",
+        "【国民向け】通知文解釈"
+    ])
 
-    with tab_notice:
+    with tab_official_notice:
         render_tab_content("notice")
 
-    with tab_flyer:
+    with tab_official_flyer:
         render_tab_content("flyer")
+        
+    with tab_citizen:
+        render_citizen_tab()
 
 if __name__ == "__main__":
     main()
