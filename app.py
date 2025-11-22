@@ -1,6 +1,6 @@
 import os
 import json
-import re  # ★追加: Markdown記号の除去用
+import re
 import streamlit as st
 from dotenv import load_dotenv
 from google import genai
@@ -458,7 +458,7 @@ def render_citizen_tab():
 def main():
     apply_custom_styles()
     st.title("Civic Reach")
-    st.markdown("Identifying 'Sludge' in government services using Behavioral Science and Generative AI.")
+    st.markdown("Identifying 'Sludge' in government services using Behavioral Science and Generative AI. Based on the OECD report *'Fixing Frictions: ‘Sludge audits’ around the world'*.Details of the evaluation criteria can be found [here](https://github.com/hrkzz/civic-reach/blob/main/methodology.md)")
     tab_official_notice, tab_official_flyer, tab_citizen = st.tabs(["【Officials】 Notice Audit", "【Officials】 Flyer Audit", "【Citizens】 Doc Decipher"])
     with tab_official_notice: render_tab_content("notice")
     with tab_official_flyer: render_tab_content("flyer")
