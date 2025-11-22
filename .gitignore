@@ -1,0 +1,34 @@
+# --- Pythonの基本 ---
+__pycache__/
+*.pyc
+
+# --- 仮想環境 (画像にある .venv を含む) ---
+.venv/
+venv/
+env/
+ENV/
+
+# --- 環境変数・秘密情報 (画像にある .env を含む) ---
+# ※重要：APIキーなどが含まれるため絶対にコミットしないこと
+.env
+.env.*
+!.env.example
+
+# --- データフォルダ (画像にある data を含む) ---
+# データセットや生成ファイルなどの大きすぎる/不要なファイルを無視
+data/
+*.csv
+*.xlsx
+*.json
+*.log
+
+# --- エディタ・OS設定 ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# --- その他 Python パッケージ管理など ---
+*.egg-info/
+dist/
+build/
