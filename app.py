@@ -42,6 +42,23 @@ def apply_custom_styles():
             padding-top: 1rem !important;
             padding-bottom: 5rem !important;
         }
+        /* Expanderの中身の上下余白を削除 */
+        div[data-testid="stExpanderDetails"] {
+            padding-top: 1rem !important;
+            padding-bottom: 1rem !important;
+            padding-left: 1rem !important;
+            padding-right: 1rem !important;
+        }
+        /* File Uploader上部の余白を削除 */
+        div[data-testid="stFileUploader"] {
+            padding-top: 0rem !important;
+            margin-top: -5px !important; /* 微調整で少し上に詰める */
+        }
+        /* File Uploaderのドロップエリアの余白調整 */
+        section[data-testid="stFileUploaderDropzone"] {
+            min-height: 0px !important;
+            padding: 1rem !important;
+        }
         /* Safety Badge Style */
         .safety-badge {
             background-color: #e8f5e9;
@@ -90,6 +107,7 @@ class CitizenGuide(BaseModel):
     risks_and_penalties: list[str] = Field(..., description="★CRITICAL: List of warnings regarding disadvantages, penalties (in the target language).")
     required_documents: list[str] = Field(..., description="List of required documents (translated if necessary).")
     important_dates: list[str] = Field(..., description="List of important dates.")
+    missing_info_questions: list[str] = Field(..., description="List of simple questions to ask the user to help them fill out the form or write an email (e.g., 'What is your full name?', 'What is your Case ID?').")
 
 # --- Utility Functions ---
 def get_file_aspect_ratio(file_bytes, file_type):
@@ -243,13 +261,15 @@ def analyze_sludge(file_bytes, file_type, target_lang="English", doc_type="flyer
         return None
 
 def analyze_citizen_doc(file_bytes, file_type, target_lang="English", status_container=None):
-    # 修正: 言語を指定して翻訳・要約するようにプロンプトを変更
+    # 修正: アクションのための「不足情報（質問）」を特定させる指示を追加
     system_prompt = f"""
     You are a High-Reliability AI Assistant. Analyze the provided government document.
     
-    **TASK:** 1. Identify "Sludge" (frictions/difficulties).
+    **TASK:**
+    1. Identify "Sludge" (frictions/difficulties).
     2. **Translate and Summarize the content into {target_lang}**.
     3. Extract Risks, Requirements, and Dates in **{target_lang}**.
+    4. **Identify Missing Info for Action:** List specific, simple questions (e.g. "What is your full name?", "What is your current address?") that you need to ask the user to help them draft an application or inquiry email.
 
     **MANDATORY BIAS & SAFETY PROTOCOLS:**
     1. **Inclusive Language:** Use gender-neutral terms suitable for {target_lang}.
@@ -262,7 +282,7 @@ def analyze_citizen_doc(file_bytes, file_type, target_lang="English", status_con
         if status_container: status_container.markdown(f"🔄 **Phase 1/2:** Analyzing & Translating to {target_lang}...")
         response = client.models.generate_content(
             model="gemini-2.0-flash", 
-            contents=[types.Content(parts=[types.Part(text="Perform a sludge audit and explain simply."), types.Part(inline_data=types.Blob(mime_type=file_type, data=file_bytes))])],
+            contents=[types.Content(parts=[types.Part(text="Perform a sludge audit and define necessary user inputs."), types.Part(inline_data=types.Blob(mime_type=file_type, data=file_bytes))])],
             config=types.GenerateContentConfig(system_instruction=system_prompt, response_mime_type="application/json", response_schema=CitizenGuide, temperature=0.0)
         )
         initial_result = json.loads(response.text)
@@ -271,6 +291,38 @@ def analyze_citizen_doc(file_bytes, file_type, target_lang="English", status_con
     except Exception as e:
         st.error(f"Analysis Error: {e}")
         return None
+
+# --- 追加: ユーザー入力をもとにドラフトを作成する関数 ---
+def generate_user_draft(context_summary, user_answers, target_lang="English"):
+    """Generates the final application draft or email based on user inputs."""
+    prompt = f"""
+    You are a **Document Drafting Engine**. You are NOT a chat assistant.
+    
+    **CONTEXT:**
+    The user needs to send a formal response/inquiry regarding: "{context_summary}".
+    
+    **USER PROVIDED DATA:**
+    {json.dumps(user_answers, ensure_ascii=False)}
+    
+    **TASK:**
+    Generate the **FINAL TEXT** for the Email or Application Form in **{target_lang}**.
+    
+    **CRITICAL OUTPUT RULES:**
+    1. **NO CONVERSATIONAL FILLER:** Do NOT say "Here is the draft", "Okay", "Given the context", "I have created...", or provide post-draft instructions. Output *only* the text to be copied.
+    2. **FORMAT:** - If Email: Start immediately with "Subject: ...". Follow with the salutation and body. Do not write "Body:".
+       - If Form: List fields as "Field Name: Value".
+    3. **INTEGRATION:** Seamlessly integrate the USER PROVIDED DATA. 
+    4. **TONE:** Professional, formal, and clear.
+    5. **PLACEHOLDERS:** Only use brackets `[...]` for information that is strictly required but was NOT provided in the user data or context.
+    """
+    try:
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=prompt
+        )
+        return response.text
+    except Exception as e:
+        return f"Error generating draft: {e}"
 
 def generate_improved_image(summary, key_details, suggestions_list, aspect_ratio="3:4", doc_type="flyer"):
     formatted_suggestions = "\n".join([f"- {s}" for s in suggestions_list])
@@ -349,25 +401,34 @@ def render_tab_content(key_prefix):
     if KEY_AUDIO not in st.session_state: st.session_state[KEY_AUDIO] = None
     if KEY_LANG not in st.session_state: st.session_state[KEY_LANG] = "English"
     
-    st.subheader("📂 1. Upload File / Run Analysis")
-    
-    # --- ★ Official側にも言語選択を追加 ---
-    c_upload_text, c_lang_select = st.columns([2, 1], vertical_alignment="bottom")
-    with c_upload_text:
-        st.write("Select a file to audit.")
-    with c_lang_select:
-        lang_options = ["English", "French", "Spanish", "Japanese", "German", "Italian", "Portuguese", "Ukrainian"]
-        lang_code_map = {"English": "en", "French": "fr", "Spanish": "es", "Japanese": "ja", "German": "de", "Italian": "it", "Portuguese": "pt", "Ukrainian": "uk"}
-        target_lang = st.selectbox("🗣️ Analysis Language", lang_options, index=0, key=f"{key_prefix}_lang_select")
+    c_header, c_lang = st.columns([3, 1], vertical_alignment="bottom")
+
+    with c_header:
+        st.subheader("📂 1. Upload File / Run Analysis")
+    with c_lang:
+        lang_options = ["English", "French", "Spanish", "Japanese", "German", "Italian", "Portuguese"]
+        lang_code_map = {"English": "en", "French": "fr", "Spanish": "es", "Japanese": "ja", "German": "de", "Italian": "it", "Portuguese": "pt"}
+        # ラベルを非表示(collapsed)にしてアイコンのみのニュアンスにするか、短くする
+        target_lang = st.selectbox("Analysis Language", lang_options, index=0, key=f"{key_prefix}_lang_select", label_visibility="collapsed")
         st.session_state[KEY_LANG] = target_lang
         selected_lang_code = lang_code_map[target_lang]
 
+
     has_result = st.session_state[KEY_RESULT] is not None
+
     with st.expander("Open/Close Panel", expanded=not has_result):
-        uploaded_file = st.file_uploader("Drag & Drop or Select File", type=["pdf", "png", "jpg", "jpeg"], key=f"{key_prefix}_uploader", label_visibility="collapsed")
+        # File Uploader
+        uploaded_file = st.file_uploader(
+            "Upload File", # ラベルは見えないがアクセシビリティのために残す
+            type=["pdf", "png", "jpg", "jpeg"], 
+            key=f"{key_prefix}_uploader", 
+            label_visibility="collapsed" # ラベルを消してさらに詰める
+        )
+        
+        # ファイルがある場合のみボタンを表示するなど、ロジックはそのまま...
         if uploaded_file is not None:
-            if st.session_state[KEY_UPLOADED_NAME] != uploaded_file.name:
-                # リセット
+             # (中略: ファイル変更検知ロジック)
+             if st.session_state[KEY_UPLOADED_NAME] != uploaded_file.name:
                 st.session_state[KEY_RESULT] = None
                 st.session_state[KEY_IMAGE] = None
                 st.session_state[KEY_AUDIO] = None
@@ -376,10 +437,11 @@ def render_tab_content(key_prefix):
                 st.session_state[KEY_ASPECT] = get_file_aspect_ratio(file_bytes, uploaded_file.type)
                 st.rerun()
 
-            if st.button("🚀 Run Analysis", type="secondary", key=f"{key_prefix}_analyze_btn", use_container_width=True):
+             # ボタンの余白も少し気になる場合は columns を使って幅を調整しても良い
+             if st.button("🚀 Run Analysis", type="secondary", key=f"{key_prefix}_analyze_btn", use_container_width=True):
+                # (中略: 分析実行ロジック)
                 status_box = st.empty()
                 file_bytes = uploaded_file.getvalue(); file_type = uploaded_file.type
-                # target_langを渡す
                 result = analyze_sludge(file_bytes, file_type, target_lang=st.session_state[KEY_LANG], doc_type=key_prefix, status_container=status_box)
                 if result: 
                     status_box.empty()
@@ -480,27 +542,23 @@ def render_citizen_tab():
     KEY_RESULT = f"{key_prefix}_result"
     KEY_UPLOADED_NAME = f"{key_prefix}_last_uploaded"
     KEY_AUDIO = f"{key_prefix}_audio_bytes"
-    KEY_LANG = f"{key_prefix}_target_lang" # 言語保持用
+    KEY_LANG = f"{key_prefix}_target_lang" 
+    KEY_DRAFT = f"{key_prefix}_draft_text" # 新規: 生成されたドラフト保存用
 
     if KEY_RESULT not in st.session_state: st.session_state[KEY_RESULT] = None
     if KEY_UPLOADED_NAME not in st.session_state: st.session_state[KEY_UPLOADED_NAME] = None
     if KEY_AUDIO not in st.session_state: st.session_state[KEY_AUDIO] = None
     if KEY_LANG not in st.session_state: st.session_state[KEY_LANG] = "English"
+    if KEY_DRAFT not in st.session_state: st.session_state[KEY_DRAFT] = None # 初期化
 
     st.subheader("📂 1. Upload Document")
     
-    # --- ★ 言語選択 UI (アクセシビリティ向上) ---
     c_upload_text, c_lang_select = st.columns([2, 1], vertical_alignment="bottom")
     with c_upload_text:
         st.markdown("Upload a difficult government document. The AI will analyze, verify, and explain it in your preferred language.")
     with c_lang_select:
-        # 言語リスト
         lang_options = ["English", "French", "Spanish", "Japanese", "German", "Italian", "Portuguese"]
-        # gTTS用言語コードマップ
-        lang_code_map = {
-            "English": "en", "French": "fr", "Spanish": "es", "Japanese": "ja",
-            "German": "de", "Italian": "it", "Portuguese": "pt"
-        }
+        lang_code_map = {"English": "en", "French": "fr", "Spanish": "es", "Japanese": "ja", "German": "de", "Italian": "it", "Portuguese": "pt"}
         target_lang = st.selectbox("🗣️ Output Language", lang_options, index=0, key=f"{key_prefix}_lang_select")
         st.session_state[KEY_LANG] = target_lang
         selected_lang_code = lang_code_map[target_lang]
@@ -512,19 +570,17 @@ def render_citizen_tab():
             if st.session_state[KEY_UPLOADED_NAME] != uploaded_file.name:
                 st.session_state[KEY_RESULT] = None
                 st.session_state[KEY_AUDIO] = None
+                st.session_state[KEY_DRAFT] = None # ファイルが変わればドラフトもクリア
                 st.session_state[KEY_UPLOADED_NAME] = uploaded_file.name
-                file_bytes = uploaded_file.getvalue()
                 st.rerun()
 
             if st.button("🔍 Decipher Document", type="secondary", key=f"{key_prefix}_analyze_btn", use_container_width=True):
                 status_box = st.empty()
                 file_bytes = uploaded_file.getvalue(); file_type = uploaded_file.type
-                # 引数に target_lang を渡す
                 result = analyze_citizen_doc(file_bytes, file_type, target_lang=st.session_state[KEY_LANG], status_container=status_box)
                 if result: 
                     status_box.empty()
                     st.session_state[KEY_RESULT] = result
-                    st.session_state[KEY_AUDIO] = None
                     st.rerun()
 
     if st.session_state[KEY_RESULT]:
@@ -533,34 +589,36 @@ def render_citizen_tab():
         st.subheader("📝 2. Document Guide")
         st.markdown(f'<div class="safety-badge">🛡️ Safety Protocol Verified ({st.session_state[KEY_LANG]})</div> ', unsafe_allow_html=True)
         
-        with st.expander("🔍 Why is this document confusing? (AI Analysis)", expanded=False):
-            st.write(result.get("sludge_observation"))
+        # --- 変更: Sludge指摘を常時表示 ---
+        st.markdown("##### 🧐 Why is this document confusing? (AI Analysis)")
+        st.info(result.get("sludge_observation"), icon="🤖")
 
-        # --- ★ TTS Audio Section for Citizens (Multilingual) ---
+        # --- 変更: 役所への通報をExpanderに格納 ---
+        with st.expander("📢 Report 'Sludge' to the Agency (Click to expand)", expanded=False):
+             with st.form(key=f"{key_prefix}_feedback_form"):
+                default_feedback = f"[Citizen Feedback - {st.session_state[KEY_LANG]}]\nIssues: {result.get('sludge_observation')}\n\nRequest: Please simplify."
+                st.text_area("Message to Send", value=default_feedback, height=100)
+                if st.form_submit_button("📨 Send Improvement Request"): st.success("✅ Sent!"); st.balloons()
+
+        # 音声読み上げボタンなど
         col_audio_btn, col_audio_player = st.columns([1, 3])
         with col_audio_btn:
             if st.button("🗣️ Listen to Guide", key=f"{key_prefix}_tts_btn"):
                 with st.spinner("Creating audio guide..."):
                     script = prepare_speech_script(result, mode="citizen")
-                    # 言語コードを指定して音声を生成
                     audio_data = generate_audio_gtts(script, lang=selected_lang_code)
-                    if audio_data:
-                        st.session_state[KEY_AUDIO] = audio_data
+                    if audio_data: st.session_state[KEY_AUDIO] = audio_data
         with col_audio_player:
-            if st.session_state[KEY_AUDIO]:
-                st.audio(st.session_state[KEY_AUDIO], format='audio/mp3')
-        # ---------------------------------------------------
+            if st.session_state[KEY_AUDIO]: st.audio(st.session_state[KEY_AUDIO], format='audio/mp3')
 
         with st.container(border=True):
             st.markdown("### 💡 Summary: What does it mean?")
-            st.info(result.get("simple_summary"), icon="💁")
+            st.write(result.get("simple_summary")) # Infoアイコン削除でスッキリさせる
 
             if result.get("risks_and_penalties"):
-                st.markdown("### ⚠️ What happens if I ignore this? (Risks & Penalties)")
+                st.markdown("### ⚠️ Risks & Penalties")
                 for risk in result.get("risks_and_penalties", []): st.error(risk, icon="🚨")
-            st.divider()
-            st.markdown("### ✅ Your Action Guide")
-            with st.container(border=True): st.markdown(result.get("action_guide_markdown"))
+            
             st.divider()
             c1, c2 = st.columns(2, gap="large")
             with c1:
@@ -573,14 +631,45 @@ def render_citizen_tab():
                 if result.get("important_dates"):
                     for date in result.get("important_dates", []): st.warning(f"🗓️ {date}")
                 else: st.write("None explicitly stated.")
-            
+
+        # --- 新機能: 3. Action / Auto-Fill Wizard ---
+        st.divider()
+        st.subheader("🚀 3. Take Action")
+        st.markdown("Based on the document, here is what you need to do.")
+
+        # アクションガイドの表示
         with st.container(border=True):
-            st.subheader("📢 Report 'Sludge' to the Agency")
-            with st.form(key=f"{key_prefix}_feedback_form"):
-                default_feedback = f"[Citizen Feedback - {st.session_state[KEY_LANG]}]\nIssues: {result.get('sludge_observation')}\n\nRequest: Please simplify."
-                feedback_text = st.text_area("Message to Send", value=default_feedback, height=150)
-                submit_feedback = st.form_submit_button("📨 Send Improvement Request", type="secondary", use_container_width=True)
-            if submit_feedback: st.success("✅ Sent!"); st.balloons()
+            st.markdown(result.get("action_guide_markdown"))
+        
+        st.markdown("#### ✍️ 4. Draft your Application / Email")
+        st.markdown("Answer these simple questions, and AI will write the formal text for you.")
+
+        # ダイナミックフォームの生成
+        with st.container(border=True):
+            user_answers = {}
+            with st.form(key="action_wizard_form"):
+                questions = result.get("missing_info_questions", [])
+                if not questions:
+                    questions = ["What is your full name?", "What is your reference number?"] # Fallback
+
+                # 2列にしてコンパクトに表示
+                col_q1, col_q2 = st.columns(2)
+                for i, q in enumerate(questions):
+                    target_col = col_q1 if i % 2 == 0 else col_q2
+                    user_answers[q] = target_col.text_input(f"❓ {q}", key=f"q_{i}")
+                
+                submitted = st.form_submit_button("✨ Generate Draft", type="primary", use_container_width=True)
+            
+            if submitted:
+                with st.spinner("AI is writing for you..."):
+                    draft_text = generate_user_draft(result.get("simple_summary"), user_answers, target_lang=st.session_state[KEY_LANG])
+                    st.session_state[KEY_DRAFT] = draft_text
+
+            # 生成結果の表示
+            if st.session_state[KEY_DRAFT]:
+                st.success("Draft created! Copy and paste below.")
+                st.text_area("📄 Final Draft", value=st.session_state[KEY_DRAFT], height=300)
+                st.caption("⚠️ Please review the draft before sending.")
 
 # --- Main App ---
 def main():
@@ -622,6 +711,19 @@ def main():
     with tab_official_notice: render_tab_content("notice")
     with tab_official_flyer: render_tab_content("flyer")
     with tab_citizen: render_citizen_tab()
+
+    st.divider()
+    st.markdown(
+        """
+        <div style="text-align: center; color: #666; font-size: 0.8rem;">
+            <strong>Disclaimer:</strong> Generative AI can produce inaccurate information. 
+            Please verify all generated outputs, especially critical dates and legal details, against the original official documents.
+            <br>
+            This tool is a prototype for the G7 GovAI Grand Challenge.
+        </div>
+        """, 
+        unsafe_allow_html=True
+    )
 
 if __name__ == "__main__":
     main()
