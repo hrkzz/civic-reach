@@ -10,6 +10,14 @@ from PIL import Image
 import io
 import pypdf
 from gtts import gTTS
+import base64
+
+def img_to_base64(image_path):
+    try:
+        with open(image_path, "rb") as img_file:
+            return base64.b64encode(img_file.read()).decode()
+    except Exception as e:
+        return None
 
 # 1. Load Environment Variables
 load_dotenv()
@@ -18,7 +26,7 @@ API_KEY = os.environ.get("GEMINI_API_KEY")
 # 2. Page Configuration
 st.set_page_config(
     page_title="Civic Reach",
-    page_icon="🧭",
+    page_icon="logo.png",
     layout="wide"
 )
 
@@ -39,7 +47,7 @@ def apply_custom_styles():
             color: #000000 !important;
         }
         .block-container {
-            padding-top: 1rem !important;
+            padding-top: 3rem !important;
             padding-bottom: 5rem !important;
         }
         /* Expanderの中身の上下余白を削除 */
@@ -685,10 +693,25 @@ def main():
     col_title, col_controls = st.columns([0.7, 0.3], gap="medium", vertical_alignment="bottom")
 
     with col_title:
-        st.markdown(
-            "<h1><a href='.' target='_self' style='text-decoration: none; color: inherit;'>Civic Reach</a></h1>", 
-            unsafe_allow_html=True
-        )
+        logo_path = "logo.png"
+        logo_base64 = img_to_base64(logo_path)
+        if logo_base64:
+            st.markdown(
+                f"""
+                <div style="display: flex; align-items: center; gap: 15px;">
+                    <img src="data:image/png;base64,{logo_base64}" style="width: 50px; height: auto; border-radius: 5px;">
+                    <h1 style="margin: 0; padding: 0;"><a href='.' target='_self' style='text-decoration: none; color: inherit;'>Civic Reach</a></h1>
+                </div>
+                """, 
+                unsafe_allow_html=True
+            )
+        else:
+            # ロゴが見つからない場合はテキストのみ
+            st.markdown(
+                "<h1><a href='.' target='_self' style='text-decoration: none; color: inherit;'>Civic Reach</a></h1>", 
+                unsafe_allow_html=True
+            )
+
         st.markdown("""
             **Reducing Friction in Government Services** | Behavioral Science × Generative AI<br>
             Based on the OECD report *'Fixing Frictions: ‘Sludge audits’ around the world'*. Details of the methodology can be found [here](https://github.com/hrkzz/civic-reach/blob/main/methodology.md).
