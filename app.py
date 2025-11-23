@@ -73,6 +73,9 @@ def apply_custom_styles():
             min-height: 0px !important;
             padding: 1rem !important;
         }
+        section[data-testid="stFileUploaderDropzone"] button {
+            font-weight: 400 !important; /* 400 = Normal weight */
+        }
 
         /* Verified Badge Style */
         .safety-badge {
