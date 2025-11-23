@@ -464,26 +464,53 @@ def render_tab_content(key_prefix):
         st.markdown(f'<div class="safety-badge">🛡️ Safety Protocol Verified ({st.session_state[KEY_LANG]})</div> ', unsafe_allow_html=True)
         
         # --- TTS Audio Section ---
-        col_audio_btn, col_audio_player = st.columns([1, 3])
-        with col_audio_btn:
-            if st.button("🗣️ Read Report", key=f"{key_prefix}_tts_btn"):
-                with st.spinner("Generating audio report..."):
-                    script = prepare_speech_script(result, mode="official")
-                    # 言語コードを指定
-                    audio_data = generate_audio_gtts(script, lang=selected_lang_code)
-                    if audio_data:
-                        st.session_state[KEY_AUDIO] = audio_data
-        with col_audio_player:
-            if st.session_state[KEY_AUDIO]:
-                st.audio(st.session_state[KEY_AUDIO], format='audio/mp3')
-        # ----------------------------------------
-
         with st.container(border=True):
-            score = result.get("total_score", 0)
-            c_score_main, c_score_sub = st.columns([1, 3], gap="large")
-            with c_score_main: st.metric("Overall Score", f"{score}/100")
-            with c_score_sub: st.write(""); st.write("Score Meter"); st.progress(score)
-            st.divider()
+            # 音声コントロールエリア
+            c_audio_btn, c_audio_player = st.columns([1, 2], vertical_alignment="center")
+            with c_audio_btn:
+                if st.button("🗣️ Read Report", key=f"{key_prefix}_tts_btn", use_container_width=True):
+                    with st.spinner("Generating audio report..."):
+                        script = prepare_speech_script(result, mode="official")
+                        audio_data = generate_audio_gtts(script, lang=selected_lang_code)
+                        if audio_data:
+                            st.session_state[KEY_AUDIO] = audio_data
+            with c_audio_player:
+                if st.session_state[KEY_AUDIO]:
+                    st.audio(st.session_state[KEY_AUDIO], format='audio/mp3')
+
+            s_deduction = result.get('search_cost', {}).get('deduction', 0)
+            s_score = 25 - s_deduction
+            
+            d_deduction = result.get('decision_cost', {}).get('deduction', 0)
+            d_score = 25 - d_deduction
+            
+            c_deduction = result.get('cognitive_cost', {}).get('deduction', 0)
+            c_score = 25 - c_deduction
+            
+            e_deduction = result.get('emotional_cost', {}).get('deduction', 0)
+            e_score = 25 - e_deduction
+            
+            total_score = result.get("total_score", 0)
+
+            col_main, col_breakdown = st.columns([1.5, 3], gap="large", vertical_alignment="center")
+
+            with col_main:
+                st.metric("Overall Score", f"{total_score}/100")
+
+
+            with col_breakdown:
+                b1, b2, b3, b4 = st.columns(4)
+                with b1:
+                    st.metric("🔍 Search", f"{s_score}/25")
+                with b2:
+                    st.metric("🤔 Decision", f"{d_score}/25")
+                with b3:
+                    st.metric("🧠 Cognitive", f"{c_score}/25")
+                with b4:
+                    st.metric("😫 Emotional", f"{e_score}/25")
+
+            st.markdown('<hr style="margin-top: 0.5rem; margin-bottom: 0.5rem; border: 0; border-top: 1px solid #eee;" />', unsafe_allow_html=True)
+
             col_eval, col_improve = st.columns(2, gap="large")
             with col_eval:
                 st.markdown("#### 🧐 Evaluation Summary")
@@ -518,8 +545,7 @@ def render_tab_content(key_prefix):
         with col_settings:
             st.markdown("#### 📝 3. Generation Settings")
             with st.form(f"{key_prefix}_generation_settings_form"):
-                # フォームの初期値に翻訳されたテキストが入るようになる
-                edited_summary = st.text_area("Context", value=result.get("overall_summary"), height=100)
+                edited_summary = st.text_area("Context", value=result.get("overall_summary"), height=150)
                 edited_key_details = st.text_area("Key Details", value=result.get("key_details"), height=200)
                 east = result.get("east_suggestions", {})
                 combined_suggestions = (
@@ -528,7 +554,7 @@ def render_tab_content(key_prefix):
                     f"- Social: {east.get('social', '')}\n"
                     f"- Timely: {east.get('timely', '')}"
                 )
-                edited_suggestions_text = st.text_area("Instructions (EAST Framework)", value=combined_suggestions, height=150)
+                edited_suggestions_text = st.text_area("Instructions (EAST Framework)", value=combined_suggestions, height=250)
                 submitted = st.form_submit_button("📄 Generate Improved Document", type="secondary", use_container_width=True)
             if submitted:
                 with st.spinner("AI is designing..."):
@@ -549,13 +575,15 @@ def render_citizen_tab():
     key_prefix = "citizen"
     KEY_RESULT = f"{key_prefix}_result"
     KEY_UPLOADED_NAME = f"{key_prefix}_last_uploaded"
-    KEY_AUDIO = f"{key_prefix}_audio_bytes"
+    KEY_AUDIO_GUIDE = f"{key_prefix}_audio_guide"
+    KEY_AUDIO_ACTION = f"{key_prefix}_audio_action"
     KEY_LANG = f"{key_prefix}_target_lang" 
     KEY_DRAFT = f"{key_prefix}_draft_text"
 
     if KEY_RESULT not in st.session_state: st.session_state[KEY_RESULT] = None
     if KEY_UPLOADED_NAME not in st.session_state: st.session_state[KEY_UPLOADED_NAME] = None
-    if KEY_AUDIO not in st.session_state: st.session_state[KEY_AUDIO] = None
+    if KEY_AUDIO_GUIDE not in st.session_state: st.session_state[KEY_AUDIO_GUIDE] = None
+    if KEY_AUDIO_ACTION not in st.session_state: st.session_state[KEY_AUDIO_ACTION] = None
     if KEY_LANG not in st.session_state: st.session_state[KEY_LANG] = "English"
     if KEY_DRAFT not in st.session_state: st.session_state[KEY_DRAFT] = None
 
@@ -584,7 +612,8 @@ def render_citizen_tab():
         if uploaded_file is not None:
             if st.session_state[KEY_UPLOADED_NAME] != uploaded_file.name:
                 st.session_state[KEY_RESULT] = None
-                st.session_state[KEY_AUDIO] = None
+                st.session_state[KEY_AUDIO_GUIDE] = None
+                st.session_state[KEY_AUDIO_ACTION] = None
                 st.session_state[KEY_DRAFT] = None
                 st.session_state[KEY_UPLOADED_NAME] = uploaded_file.name
                 st.rerun()
@@ -604,7 +633,6 @@ def render_citizen_tab():
         st.markdown("#### 📝 2. Document Guide")
         st.markdown(f'<div class="safety-badge">🛡️ Safety Protocol Verified ({st.session_state[KEY_LANG]})</div> ', unsafe_allow_html=True)
         
-        # --- 変更: Sludge指摘を常時表示 ---
         with st.container(border=True):
             st.markdown("##### Why is this document confusing? (AI Analysis)")
             st.markdown(result.get("sludge_observation"))
@@ -616,18 +644,25 @@ def render_citizen_tab():
                     st.text_area("Message to Send", value=default_feedback, height=100)
                     if st.form_submit_button("📨 Send Improvement Request"): st.success("✅ Sent!"); st.balloons()
 
-        # 音声読み上げボタンなど
-        col_audio_btn, col_audio_player = st.columns([1, 3])
-        with col_audio_btn:
-            if st.button("🗣️ Listen to Guide", key=f"{key_prefix}_tts_btn"):
-                with st.spinner("Creating audio guide..."):
-                    script = prepare_speech_script(result, mode="citizen")
-                    audio_data = generate_audio_gtts(script, lang=selected_lang_code)
-                    if audio_data: st.session_state[KEY_AUDIO] = audio_data
-        with col_audio_player:
-            if st.session_state[KEY_AUDIO]: st.audio(st.session_state[KEY_AUDIO], format='audio/mp3')
-
         with st.container(border=True):
+            c_audio_btn, c_audio_player = st.columns([1, 2])
+            with c_audio_btn:
+                if st.button("🗣️ Listen to Guide", key=f"{key_prefix}_guide_tts_btn", use_container_width=True):
+                    with st.spinner("Generating audio..."):
+                        # Guide用のスクリプトを作成
+                        script = f"Summary. {clean_markdown(result.get('simple_summary'))}. "
+                        if result.get('risks_and_penalties'):
+                            script += "Risks and Penalties. "
+                            for r in result['risks_and_penalties']: script += f"{clean_markdown(r)}. "
+                        if result.get('important_dates'):
+                            script += "Important Dates. "
+                            for d in result['important_dates']: script += f"{clean_markdown(d)}. "
+                        
+                        audio_data = generate_audio_gtts(script, lang=selected_lang_code)
+                        if audio_data: st.session_state[KEY_AUDIO_GUIDE] = audio_data
+            with c_audio_player:
+                if st.session_state[KEY_AUDIO_GUIDE]: st.audio(st.session_state[KEY_AUDIO_GUIDE], format='audio/mp3')
+
             st.markdown("#### 💡 Summary: What does it mean?")
             summary_text = result.get("simple_summary", "")
             if summary_text:
@@ -660,18 +695,29 @@ def render_citizen_tab():
                     date_md = ""
                     for date in result.get("important_dates", []):
                         safe_date = date.replace("$", "\$")
-                        date_md += f"- 🗓️ {safe_date}\n"
+                        date_md += f"- {safe_date}\n"
                     st.markdown(date_md)
                 else: 
                     st.write("None explicitly stated.")
 
-        # --- 新機能: 3. Action / Auto-Fill Wizard ---
+        # --- 3. Action / Auto-Fill Wizard ---
         st.divider()
         st.markdown("#### 🚀 3. Take Action")
-        st.markdown("Based on the document, here is what you need to do.")
 
         # アクションガイドの表示
         with st.container(border=True):
+            c_act_btn, c_act_player = st.columns([1, 2])
+            with c_act_btn:
+                if st.button("🗣️ Listen to Steps", key=f"{key_prefix}_action_tts_btn", use_container_width=True):
+                    with st.spinner("Generating audio..."):
+                        # Action用のスクリプトを作成
+                        script = f"Here are the steps to take. {clean_markdown(result.get('action_guide_markdown'))}"
+                        audio_data = generate_audio_gtts(script, lang=selected_lang_code)
+                        if audio_data: st.session_state[KEY_AUDIO_ACTION] = audio_data
+            with c_act_player:
+                if st.session_state[KEY_AUDIO_ACTION]: st.audio(st.session_state[KEY_AUDIO_ACTION], format='audio/mp3')
+            
+            st.markdown("Based on the document, here is what you need to do.")
             st.markdown(result.get("action_guide_markdown"))
         
         st.markdown("#### ✍️ 4. Draft your Application / Email")
