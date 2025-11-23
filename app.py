@@ -685,9 +685,12 @@ def main():
     col_title, col_controls = st.columns([0.7, 0.3], gap="medium", vertical_alignment="bottom")
 
     with col_title:
-        st.title("Civic Reach")
+        st.markdown(
+            "<h1><a href='.' target='_self' style='text-decoration: none; color: inherit;'>Civic Reach</a></h1>", 
+            unsafe_allow_html=True
+        )
         st.markdown("""
-            **Identifying 'Sludge' in government services** | Behavioral Science × Generative AI<br>
+            **Reducing Friction in Government Services** | Behavioral Science × Generative AI<br>
             Based on the OECD report *'Fixing Frictions: ‘Sludge audits’ around the world'*. Details of the methodology can be found [here](https://github.com/hrkzz/civic-reach/blob/main/methodology.md).
             """, unsafe_allow_html=True)
 
