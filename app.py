@@ -417,7 +417,13 @@ def render_tab_content(key_prefix):
         lang_options = ["English", "French", "Spanish", "Japanese", "German", "Italian", "Portuguese"]
         lang_code_map = {"English": "en", "French": "fr", "Spanish": "es", "Japanese": "ja", "German": "de", "Italian": "it", "Portuguese": "pt"}
         # ラベルを非表示(collapsed)にしてアイコンのみのニュアンスにするか、短くする
-        target_lang = st.selectbox("Analysis Language", lang_options, index=0, key=f"{key_prefix}_lang_select", label_visibility="collapsed")
+        target_lang = st.selectbox(
+            "Analysis Language", 
+            lang_options, 
+            index=0, 
+            key=f"{key_prefix}_lang_select", 
+            label_visibility="collapsed",
+            format_func=lambda x: f"🌐 {x}")
         st.session_state[KEY_LANG] = target_lang
         selected_lang_code = lang_code_map[target_lang]
 
@@ -511,34 +517,35 @@ def render_tab_content(key_prefix):
 
             st.markdown('<hr style="margin-top: 0.5rem; margin-bottom: 0.5rem; border: 0; border-top: 1px solid #eee;" />', unsafe_allow_html=True)
 
-            col_eval, col_improve = st.columns(2, gap="large")
-            with col_eval:
+            col_text_1, col_text_2 = st.columns(2, gap="large")
+            with col_text_1:
                 st.markdown("#### 🧐 Evaluation Summary")
                 st.write(result.get("evaluation_summary"))
-                with st.expander("▼ Detailed Evaluation (4 Sludge Scores)", expanded=False):
-                    s_deduction = result.get('search_cost', {}).get('deduction', 0)
-                    s_score = 25 - s_deduction                   
-                    d_deduction = result.get('decision_cost', {}).get('deduction', 0)
-                    d_score = 25 - d_deduction                    
-                    c_deduction = result.get('cognitive_cost', {}).get('deduction', 0)
-                    c_score = 25 - c_deduction                   
-                    e_deduction = result.get('emotional_cost', {}).get('deduction', 0)
-                    e_score = 25 - e_deduction
-                    st.write(f"**🔍 Search Score ({s_score}/25):** {result.get('search_cost', {}).get('comment')}")
-                    st.write(f"**🤔 Decision Score ({d_score}/25):** {result.get('decision_cost', {}).get('comment')}")
-                    st.write(f"**🧠 Cognitive Score ({c_score}/25):** {result.get('cognitive_cost', {}).get('comment')}")
-                    st.write(f"**😫 Emotional Score ({e_score}/25):** {result.get('emotional_cost', {}).get('comment')}")
-
-            with col_improve:
+            
+            with col_text_2:
                 st.markdown("#### ✨ Improvement Direction")
                 st.write(result.get("improvement_summary"))
+
+            col_exp_1, col_exp_2 = st.columns(2, gap="large")
+            
+            with col_exp_1:
+                # 詳細コメントのExpander
+                with st.expander("▼ Detailed Evaluation (4 Sludge Scores)", expanded=False):
+                    # スコア計算済みの変数は上部で定義されているのでそのまま使用可能
+                    st.write(f"**🔍 Search:** {result.get('search_cost', {}).get('comment')}")
+                    st.write(f"**🤔 Decision:** {result.get('decision_cost', {}).get('comment')}")
+                    st.write(f"**🧠 Cognitive:** {result.get('cognitive_cost', {}).get('comment')}")
+                    st.write(f"**😫 Emotional:** {result.get('emotional_cost', {}).get('comment')}")
+
+            with col_exp_2:
+                # EAST提案のExpander
                 with st.expander("▼ EAST Suggestions", expanded=False):
                     east = result.get("east_suggestions", {})
                     st.write(f"**😌 Easy:** {east.get('easy')}")
                     st.write(f"**✨ Attractive:** {east.get('attractive')}")
                     st.write(f"**🗣️ Social:** {east.get('social')}")
                     st.write(f"**⏱️ Timely:** {east.get('timely')}")
-        
+                    
         st.markdown("""<div style="display: flex; align-items: center; justify-content: center; gap: 10px; padding: 20px; margin-top: 10px; margin-bottom: 10px;"><span style="font-size: 2rem;">⬇️</span><span style="color: #555; font-weight: bold; font-size: 1rem;">Create improved design based on this audit</span></div>""", unsafe_allow_html=True)
 
         col_settings, col_result = st.columns([1, 1], gap="medium")
@@ -594,8 +601,13 @@ def render_citizen_tab():
     with c_lang:
         lang_options = ["English", "French", "Spanish", "Japanese", "German", "Italian", "Portuguese"]
         lang_code_map = {"English": "en", "French": "fr", "Spanish": "es", "Japanese": "ja", "German": "de", "Italian": "it", "Portuguese": "pt"}
-        # ラベル非表示で統一
-        target_lang = st.selectbox("Output Language", lang_options, index=0, key=f"{key_prefix}_lang_select", label_visibility="collapsed")
+        target_lang = st.selectbox(
+            "Analysis Language", 
+            lang_options, 
+            index=0, 
+            key=f"{key_prefix}_lang_select", 
+            label_visibility="collapsed",
+            format_func=lambda x: f"🌐 {x}")
         st.session_state[KEY_LANG] = target_lang
         selected_lang_code = lang_code_map[target_lang]
 
@@ -606,7 +618,7 @@ def render_citizen_tab():
             "Upload File", 
             type=["pdf", "png", "jpg", "jpeg"], 
             key=f"{key_prefix}_uploader", 
-            label_visibility="collapsed" # ラベル非表示
+            label_visibility="collapsed" 
         )
         
         if uploaded_file is not None:
