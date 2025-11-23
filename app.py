@@ -543,38 +543,45 @@ def render_citizen_tab():
     KEY_UPLOADED_NAME = f"{key_prefix}_last_uploaded"
     KEY_AUDIO = f"{key_prefix}_audio_bytes"
     KEY_LANG = f"{key_prefix}_target_lang" 
-    KEY_DRAFT = f"{key_prefix}_draft_text" # 新規: 生成されたドラフト保存用
+    KEY_DRAFT = f"{key_prefix}_draft_text"
 
     if KEY_RESULT not in st.session_state: st.session_state[KEY_RESULT] = None
     if KEY_UPLOADED_NAME not in st.session_state: st.session_state[KEY_UPLOADED_NAME] = None
     if KEY_AUDIO not in st.session_state: st.session_state[KEY_AUDIO] = None
     if KEY_LANG not in st.session_state: st.session_state[KEY_LANG] = "English"
-    if KEY_DRAFT not in st.session_state: st.session_state[KEY_DRAFT] = None # 初期化
+    if KEY_DRAFT not in st.session_state: st.session_state[KEY_DRAFT] = None
 
-    st.subheader("📂 1. Upload Document")
+    c_header, c_lang = st.columns([3, 1], vertical_alignment="bottom")
     
-    c_upload_text, c_lang_select = st.columns([2, 1], vertical_alignment="bottom")
-    with c_upload_text:
-        st.markdown("Upload a difficult government document. The AI will analyze, verify, and explain it in your preferred language.")
-    with c_lang_select:
+    with c_header:
+        st.subheader("📂 1. Upload Document / Run Analysis")
+    with c_lang:
         lang_options = ["English", "French", "Spanish", "Japanese", "German", "Italian", "Portuguese"]
         lang_code_map = {"English": "en", "French": "fr", "Spanish": "es", "Japanese": "ja", "German": "de", "Italian": "it", "Portuguese": "pt"}
-        target_lang = st.selectbox("🗣️ Output Language", lang_options, index=0, key=f"{key_prefix}_lang_select")
+        # ラベル非表示で統一
+        target_lang = st.selectbox("Output Language", lang_options, index=0, key=f"{key_prefix}_lang_select", label_visibility="collapsed")
         st.session_state[KEY_LANG] = target_lang
         selected_lang_code = lang_code_map[target_lang]
 
     has_result = st.session_state[KEY_RESULT] is not None
+
     with st.expander("Open/Close Panel", expanded=not has_result):
-        uploaded_file = st.file_uploader("Drag & Drop or Select File", type=["pdf", "png", "jpg", "jpeg"], key=f"{key_prefix}_uploader", label_visibility="collapsed")
+        uploaded_file = st.file_uploader(
+            "Upload File", 
+            type=["pdf", "png", "jpg", "jpeg"], 
+            key=f"{key_prefix}_uploader", 
+            label_visibility="collapsed" # ラベル非表示
+        )
+        
         if uploaded_file is not None:
             if st.session_state[KEY_UPLOADED_NAME] != uploaded_file.name:
                 st.session_state[KEY_RESULT] = None
                 st.session_state[KEY_AUDIO] = None
-                st.session_state[KEY_DRAFT] = None # ファイルが変わればドラフトもクリア
+                st.session_state[KEY_DRAFT] = None
                 st.session_state[KEY_UPLOADED_NAME] = uploaded_file.name
                 st.rerun()
 
-            if st.button("🔍 Decipher Document", type="secondary", key=f"{key_prefix}_analyze_btn", use_container_width=True):
+            if st.button("🔍 Run Analysis", type="secondary", key=f"{key_prefix}_analyze_btn", use_container_width=True):
                 status_box = st.empty()
                 file_bytes = uploaded_file.getvalue(); file_type = uploaded_file.type
                 result = analyze_citizen_doc(file_bytes, file_type, target_lang=st.session_state[KEY_LANG], status_container=status_box)
