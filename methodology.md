@@ -56,9 +56,7 @@ The psychological pain, stress, or humiliation felt by citizens during the proce
 
 ### Improvement Approach: The EAST Framework
 
-Suggestions to eliminate identified sludge are generated based on the EAST Framework (developed by the Behavioural Insights Team), which is recommended in the OECD report.
-
-The tool maps the report's guideline to "suggest making behaviours easier to do, more inclusive, more compelling and easier to follow through to completion" (p.19) into the following four dimensions:
+Suggestions to eliminate identified sludge are generated based on the EAST Framework (developed by the Behavioural Insights Team), which is recommended
 
 - Easy: Simplify defaults, reduce friction.
 - Attractive: Attract attention, highlight benefits/rewards.
