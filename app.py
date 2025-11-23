@@ -131,13 +131,13 @@ def apply_custom_styles():
 
         /* 3rd Tab: CITIZENS (Friendly Green Theme) */
         div[data-testid="stTabs"] button[data-testid="stTab"]:nth-child(3) {
-            background-color: #f1f8e9;  /* Light Green 50 */
-            color: #2e7d32;             /* Green 800 (Matches Safety Badge) */
+            background-color: #f1f8e9;  
+            color: #2e7d32;             
         }
         /* Active state for Citizens */
         div[data-testid="stTabs"] button[aria-selected="true"]:nth-child(3) {
-            background-color: #e8f5e9;  /* Slightly darker green */
-            box-shadow: inset 0 -2px 0 0 #2e7d32; /* Green bottom border */
+            background-color: #e8f5e9;  
+            box-shadow: inset 0 -2px 0 0 #2e7d32; 
         }
         
         /* Remove default Streamlit red line */
