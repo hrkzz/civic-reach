@@ -97,7 +97,7 @@ def apply_custom_styles():
             gap: 0px !important;
         }
 
-        div[data-testid="stTabs"] button {
+        div[data-testid="stTabs"] div[data-baseweb="tab-list"] button {
             font-weight: 600;
             border-radius: 0px;
             border-top-left-radius: 6px;
@@ -112,31 +112,31 @@ def apply_custom_styles():
         }
 
         /* Remove border from the very last tab */
-        div[data-testid="stTabs"] button:last-child {
+        div[data-testid="stTabs"] div[data-baseweb="tab-list"] button:last-child {
             border-right: none !important;
         }
 
         /* 1st & 2nd Tabs: OFFICIALS (Cool Blue Theme) */
-        div[data-testid="stTabs"] button[data-testid="stTab"]:nth-child(1),
-        div[data-testid="stTabs"] button[data-testid="stTab"]:nth-child(2) {
+        div[data-testid="stTabs"] div[data-baseweb="tab-list"] button[data-testid="stTab"]:nth-child(1),
+        div[data-testid="stTabs"] div[data-baseweb="tab-list"] button[data-testid="stTab"]:nth-child(2) {
             background-color: #f0f7ff;
             color: #004b87;
         }
         /* Active state for Officials */
-        div[data-testid="stTabs"] button[aria-selected="true"]:nth-child(1),
-        div[data-testid="stTabs"] button[aria-selected="true"]:nth-child(2) {
+        div[data-testid="stTabs"] div[data-baseweb="tab-list"] button[aria-selected="true"]:nth-child(1),
+        div[data-testid="stTabs"] div[data-baseweb="tab-list"] button[aria-selected="true"]:nth-child(2) {
             background-color: #e0f0ff;
-            box-shadow: inset 0 -2px 0 0 #004b87; /* Simulated bottom border */
+            box-shadow: inset 0 -2px 0 0 #004b87;
         }
 
         /* 3rd Tab: CITIZENS (Friendly Green Theme) */
-        div[data-testid="stTabs"] button[data-testid="stTab"]:nth-child(3) {
-            background-color: #f1f8e9;  
+        div[data-testid="stTabs"] div[data-baseweb="tab-list"] button[data-testid="stTab"]:nth-child(3) {
+            background-color: #f1f8e9;
             color: #2e7d32;             
         }
         /* Active state for Citizens */
-        div[data-testid="stTabs"] button[aria-selected="true"]:nth-child(3) {
-            background-color: #e8f5e9;  
+        div[data-testid="stTabs"] div[data-baseweb="tab-list"] button[aria-selected="true"]:nth-child(3) {
+            background-color: #e8f5e9;
             box-shadow: inset 0 -2px 0 0 #2e7d32; 
         }
         
