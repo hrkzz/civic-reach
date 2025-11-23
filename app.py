@@ -1,73 +1,80 @@
 import os
 import json
 import re
-import streamlit as st
+import io
+import base64
+import pypdf
+from PIL import Image
 from dotenv import load_dotenv
+from gtts import gTTS
+
+import streamlit as st
 from google import genai
 from google.genai import types
 from pydantic import BaseModel, Field
-from PIL import Image
-import io
-import pypdf
-from gtts import gTTS
-import base64
 
-def img_to_base64(image_path):
-    try:
-        with open(image_path, "rb") as img_file:
-            return base64.b64encode(img_file.read()).decode()
-    except Exception as e:
-        return None
+# ==============================================================================
+# 1. CONFIGURATION & SETUP
+# ==============================================================================
 
-# 1. Load Environment Variables
+# Load environment variables
 load_dotenv()
 API_KEY = os.environ.get("GEMINI_API_KEY")
 
-# 2. Page Configuration
+# Streamlit Page Config
 st.set_page_config(
     page_title="Civic Reach",
     page_icon="logo.png",
     layout="wide"
 )
 
-# 3. Initialize Client
+# Initialize Gemini Client
 if not API_KEY:
     st.error("Error: GEMINI_API_KEY is not set in the .env file.")
     st.stop()
 
 client = genai.Client(api_key=API_KEY)
 
-# --- CSS Styles ---
+# --- Custom CSS Styling ---
 def apply_custom_styles():
+    """
+    Injects custom CSS to enhance the UI for a professional, government-grade look.
+    Adjusts padding, margins, and visual hierarchy.
+    """
     st.markdown("""
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
+
         html, body, [class*="css"] {
             font-family: 'Inter', sans-serif !important;
             color: #000000 !important;
         }
+
+        /* Adjust top padding to prevent header overlap */
         .block-container {
             padding-top: 3rem !important;
             padding-bottom: 5rem !important;
         }
-        /* Expanderの中身の上下余白を削除 */
+        
+        /* Tweak Expander spacing */
         div[data-testid="stExpanderDetails"] {
             padding-top: 1rem !important;
             padding-bottom: 1rem !important;
             padding-left: 1rem !important;
             padding-right: 1rem !important;
         }
-        /* File Uploader上部の余白を削除 */
+
+        /* Compact File Uploader */
         div[data-testid="stFileUploader"] {
             padding-top: 0rem !important;
-            margin-top: -5px !important; /* 微調整で少し上に詰める */
+            margin-top: -5px !important;
         }
-        /* File Uploaderのドロップエリアの余白調整 */
         section[data-testid="stFileUploaderDropzone"] {
             min-height: 0px !important;
             padding: 1rem !important;
         }
-        /* Safety Badge Style */
+
+        /* Verified Badge Style */
         .safety-badge {
             background-color: #e8f5e9;
             border: 1px solid #4caf50;
@@ -81,22 +88,87 @@ def apply_custom_styles():
             gap: 5px;
             margin-bottom: 10px;
         }
+
+        /* Reset gap between tabs in the container */
+        div[data-testid="stTabs"] div[data-baseweb="tab-list"] {
+            gap: 0px !important;
+        }
+
+        div[data-testid="stTabs"] button {
+            font-weight: 600;
+            border-radius: 0px;
+            border-top-left-radius: 6px;
+            border-top-right-radius: 6px;
+            margin-right: 0px !important;
+            padding-left: 20px;
+            padding-right: 20px;
+            border: none !important;
+            transition: all 0.2s;
+            /* Add a subtle separator line on the right */
+            border-right: 1px solid rgba(0,0,0,0.05) !important; 
+        }
+
+        /* Remove border from the very last tab */
+        div[data-testid="stTabs"] button:last-child {
+            border-right: none !important;
+        }
+
+        /* 1st & 2nd Tabs: OFFICIALS (Cool Blue Theme) */
+        div[data-testid="stTabs"] button[data-testid="stTab"]:nth-child(1),
+        div[data-testid="stTabs"] button[data-testid="stTab"]:nth-child(2) {
+            background-color: #f0f7ff;
+            color: #004b87;
+        }
+        /* Active state for Officials */
+        div[data-testid="stTabs"] button[aria-selected="true"]:nth-child(1),
+        div[data-testid="stTabs"] button[aria-selected="true"]:nth-child(2) {
+            background-color: #e0f0ff;
+            box-shadow: inset 0 -2px 0 0 #004b87; /* Simulated bottom border */
+        }
+
+        /* 3rd Tab: CITIZENS (Friendly Green Theme) */
+        div[data-testid="stTabs"] button[data-testid="stTab"]:nth-child(3) {
+            background-color: #f1f8e9;  /* Light Green 50 */
+            color: #2e7d32;             /* Green 800 (Matches Safety Badge) */
+        }
+        /* Active state for Citizens */
+        div[data-testid="stTabs"] button[aria-selected="true"]:nth-child(3) {
+            background-color: #e8f5e9;  /* Slightly darker green */
+            box-shadow: inset 0 -2px 0 0 #2e7d32; /* Green bottom border */
+        }
+        
+        /* Remove default Streamlit red line */
+        div[data-testid="stTabs"] div[data-baseweb="tab-highlight"] {
+            display: none !important;
+        }
+        
+        /* Add a clean bottom border to the whole tab container */
+        div[data-testid="stTabs"] {
+             border-bottom: 1px solid #e0e0e0;
+        }
+        
+        }
+
     </style>
     """, unsafe_allow_html=True)
 
-# --- Data Structures (Pydantic) ---
-# (変更なし)
+# ==============================================================================
+# 2. DATA MODELS (STRUCTURED OUTPUT SCHEMAS)
+# ==============================================================================
 class CostDetail(BaseModel):
+    """Schema for quantifying specific types of friction (Sludge)."""
     deduction: int = Field(..., description="Points deducted for this category (0-25).")
     comment: str = Field(..., description="Specific analysis and explanation of why these points were deducted.")
 
 class EastSuggestions(BaseModel):
+    """Schema for behavioral insights based on the EAST framework (UK Behavioral Insights Team)."""
     easy: str = Field(..., description="Improvement suggestion based on 'Easy' (Simplify).")
     attractive: str = Field(..., description="Improvement suggestion based on 'Attractive' (Attention).")
     social: str = Field(..., description="Improvement suggestion based on 'Social' (Norms/Trust).")
     timely: str = Field(..., description="Improvement suggestion based on 'Timely' (Promptness).")
 
 class SludgeAudit(BaseModel):
+    """Master schema for the 'Official' audit report. Calculates a 'Friction Score' and provides actionable feedback."""
     total_score: int = Field(..., description="Total score out of 100 (100 minus sum of deductions).")
     overall_summary: str = Field(..., description="Brief summary of the document context.")
     evaluation_summary: str = Field(..., description="Overall assessment of the audit results.")
@@ -109,6 +181,7 @@ class SludgeAudit(BaseModel):
     east_suggestions: EastSuggestions = Field(..., description="Detailed improvement suggestions based on the EAST framework.")
 
 class CitizenGuide(BaseModel):
+    """Master schema for the 'Citizen' assistance guide. Focuses on simplification, translation, and actionability."""
     sludge_observation: str = Field(..., description="Analysis of why this document is difficult (in the target language).")
     simple_summary: str = Field(..., description="A simple summary in the target language. Clearly state 'Who' needs to do 'What'.")
     action_guide_markdown: str = Field(..., description="Step-by-step action guide in Markdown (in the target language).")
@@ -117,8 +190,23 @@ class CitizenGuide(BaseModel):
     important_dates: list[str] = Field(..., description="List of important dates.")
     missing_info_questions: list[str] = Field(..., description="List of simple questions to ask the user to help them fill out the form or write an email (e.g., 'What is your full name?', 'What is your Case ID?').")
 
-# --- Utility Functions ---
+# ==============================================================================
+# 3. HELPER FUNCTIONS (UTILS & MEDIA)
+# ==============================================================================
+
+def img_to_base64(image_path):
+    """Converts a local image file to a Base64 string for HTML embedding."""
+    try:
+        with open(image_path, "rb") as img_file:
+            return base64.b64encode(img_file.read()).decode()
+    except Exception:
+        return None
+
 def get_file_aspect_ratio(file_bytes, file_type):
+    """
+    Estimates the aspect ratio of the uploaded document (PDF/Image)
+    to optimize the generative AI image output dimensions.
+    """
     width = 0; height = 0
     try:
         if "pdf" in file_type:
@@ -137,45 +225,70 @@ def get_file_aspect_ratio(file_bytes, file_type):
     except Exception: pass
     return "3:4"
 
-# --- 追加機能: セッションクリア (Privacy Control) ---
 def clear_session_data():
-    """すべてのセッションデータを明示的に削除し、アプリをリセットする"""
+    """
+    Security Feature: Completely wipes the session state.
+    Ensures no data persists after the user finishes their session.
+    """
     for key in list(st.session_state.keys()):
         del st.session_state[key]
-    # Streamlitのキャッシュクリア（念のため）
     st.cache_data.clear()
     st.cache_resource.clear()
     st.rerun()
     
-# --- ★ Audio & Text Processing Functions ---
-
 def clean_markdown(text):
-    """Markdown記号を除去して読み上げやすくする"""
+    """Removes markdown formatting for cleaner Text-to-Speech output."""
     if not text: return ""
-    # 太字、見出し、リスト記号などを除去
     text = re.sub(r'[*#`_\[\]]', '', text) 
-    text = re.sub(r'\n+', '. ', text) # 改行をピリオドとスペースに
+    text = re.sub(r'\n+', '. ', text)
     return text
 
+def generate_audio_gtts(text, lang='en'):
+    """
+    Generates audio using Google Text-to-Speech (gTTS).
+    Note: In a production G7 environment, this could be swapped for the Google Cloud TTS API for higher fidelity.
+    """
+    try:
+        if not text: return None
+        tts = gTTS(text=text, lang=lang, slow=False)
+        fp = io.BytesIO()
+        tts.write_to_fp(fp)
+        fp.seek(0)
+        return fp
+    except Exception as e:
+        st.error(f"TTS Error: {e}")
+        return None
+
 def prepare_speech_script(data, mode="official"):
-    """JSONデータから読み上げ用の全文スクリプトを作成する"""
+    """Constructs a coherent script for the TTS engine based on the structured JSON data."""
     script = ""
-    
     if mode == "official":
-        # 英語のラベルを削除し、AIが生成した翻訳済みテキストを繋げる
-        script += f"Overall Score: {data['total_score']}. " # 数字は万国共通なのでOK
+        script += f"Overall Score: {data['total_score']}. "
+        script += f"Evaluation Summary. "
         script += f"{clean_markdown(data['evaluation_summary'])}. "
-        
-        # コスト分析
+        script += f"Detailed Evaluation. "
+        script += f"Search cost. "
         script += f"{clean_markdown(data['search_cost']['comment'])}. "
+        script += f"Decision cost. "
         script += f"{clean_markdown(data['decision_cost']['comment'])}. "
-        
-        # 改善提案
-        script += f"{clean_markdown(data['improvement_summary'])}. "
-        
+        script += f"Cognitive cost. "
+        script += f"{clean_markdown(data['cognitive_cost']['comment'])}. "
+        script += f"Emotional cost. "
+        script += f"{clean_markdown(data['emotional_cost']['comment'])}. "
+
         east = data.get('east_suggestions', {})
-        script += f"{clean_markdown(east.get('easy'))}. "
-        
+        script += f"Improvement Direction. "
+        script += f"{clean_markdown(data['improvement_summary'])}. "
+        script += f"EAST Suggestions."
+        script += f"Easy. "
+        script += f"{clean_markdown(east.get('easy'))}. "       
+        script += f"Attractive. "
+        script += f"{clean_markdown(east.get('attractive'))}. "       
+        script += f"Social. "
+        script += f"{clean_markdown(east.get('social'))}. "       
+        script += f"Timely. "
+        script += f"{clean_markdown(east.get('timely'))}. "       
+
     elif mode == "citizen":
         script += f"{clean_markdown(data['simple_summary'])}. "
         if data.get('risks_and_penalties'):
@@ -186,25 +299,17 @@ def prepare_speech_script(data, mode="official"):
              script += ", ".join(data['required_documents']) + ". "
         if data.get('important_dates'):
              script += ", ".join(data['important_dates']) + ". "
-
     return script
 
-def generate_audio_gtts(text, lang='en'):
-    """Uses Google Text-to-Speech (gTTS) with language support"""
-    try:
-        if not text: return None
-        # lang引数をgTTSに渡す
-        tts = gTTS(text=text, lang=lang, slow=False)
-        fp = io.BytesIO()
-        tts.write_to_fp(fp)
-        fp.seek(0)
-        return fp
-    except Exception as e:
-        st.error(f"TTS Error: {e}")
-        return None
-
-# --- Analysis & Safety Functions (Unchanged) ---
+# ==============================================================================
+# 4. CORE LOGIC: AI ANALYSIS & GENERATION
+# ==============================================================================
 def verify_safety(file_bytes, file_type, initial_json, model_schema):
+    """
+    Safety Layer: Uses a second AI pass to verify critical numbers (amounts, dates).
+    This 'Double-Check' pattern reduces hallucinations in sensitive government contexts.
+    """
+
     system_prompt = """
     You are a **Government Document Integrity Officer** and a **Safety Layer**.
     **STRICT VERIFICATION RULES:**
@@ -216,8 +321,16 @@ def verify_safety(file_bytes, file_type, initial_json, model_schema):
     try:
         response = client.models.generate_content(
             model="gemini-2.0-flash",
-            contents=[types.Content(parts=[types.Part(text=f"Verify this JSON data against the document:\n{json.dumps(initial_json, ensure_ascii=False)}"), types.Part(inline_data=types.Blob(mime_type=file_type, data=file_bytes))])],
-            config=types.GenerateContentConfig(system_instruction=system_prompt, response_mime_type="application/json", response_schema=model_schema, temperature=0.0)
+            contents=[types.Content(parts=[
+                types.Part(text=f"Verify this JSON data against the document:\n{json.dumps(initial_json, ensure_ascii=False)}"), 
+                types.Part(inline_data=types.Blob(mime_type=file_type, data=file_bytes))
+                ])],
+            config=types.GenerateContentConfig(
+                system_instruction=system_prompt, 
+                response_mime_type="application/json", 
+                response_schema=model_schema, 
+                temperature=0.0
+                )
         )
         return json.loads(response.text)
     except Exception as e:
@@ -225,7 +338,10 @@ def verify_safety(file_bytes, file_type, initial_json, model_schema):
         return initial_json
 
 def analyze_sludge(file_bytes, file_type, target_lang="English", doc_type="flyer", status_container=None):
-    # バイアス対策 + 多言語指示
+    """
+    [Officials] Conducts a comprehensive 'Sludge Audit' on the document.
+    Evaluates costs (Search, Decision, etc.) and suggests EAST framework improvements.
+    """
     bias_instruction = f"""
     **BIAS & INCLUSION PROTOCOLS:**
     1. Check if the document uses gendered or exclusionary language.
@@ -251,17 +367,27 @@ def analyze_sludge(file_bytes, file_type, target_lang="English", doc_type="flyer
     
     Output in JSON.
     """
-    prompt_flyer = f"You are a Public Information Design Specialist. Audit the provided flyer. {bias_instruction} Output in JSON."
-    
+
+    prompt_flyer = f"You are a Public Information Design Specialist. Audit the provided flyer. {bias_instruction} Output in JSON."  
     system_prompt = prompt_notice if doc_type == "notice" else prompt_flyer
+
     try:
         if status_container: status_container.markdown(f"🔄 **Phase 1/2:** Auditing & Translating to {target_lang}...")
         response = client.models.generate_content(
             model="gemini-2.0-flash", 
-            contents=[types.Content(parts=[types.Part(text="Strictly audit this document and output in JSON."), types.Part(inline_data=types.Blob(mime_type=file_type, data=file_bytes))])],
-            config=types.GenerateContentConfig(system_instruction=system_prompt, response_mime_type="application/json", response_schema=SludgeAudit, temperature=0.0)
+            contents=[types.Content(parts=[
+                types.Part(text="Strictly audit this document and output in JSON."), 
+                types.Part(inline_data=types.Blob(mime_type=file_type, data=file_bytes))
+            ])],
+            config=types.GenerateContentConfig(
+                system_instruction=system_prompt, 
+                response_mime_type="application/json", 
+                response_schema=SludgeAudit, 
+                temperature=0.0
+            )
         )
         initial_result = json.loads(response.text)
+
         if status_container: status_container.markdown("🛡️ **Phase 2/2:** Verifying Risk Data (Amounts/Dates)...")
         return verify_safety(file_bytes, file_type, initial_result, SludgeAudit)
     except Exception as e:
@@ -269,7 +395,10 @@ def analyze_sludge(file_bytes, file_type, target_lang="English", doc_type="flyer
         return None
 
 def analyze_citizen_doc(file_bytes, file_type, target_lang="English", status_container=None):
-    # 修正: アクションのための「不足情報（質問）」を特定させる指示を追加
+    """
+    [Citizens] Translates, simplifies, and extracts actionable steps from the document.
+    Identifies specific inputs needed for the user to take action.
+    """
     system_prompt = f"""
     You are a High-Reliability AI Assistant. Analyze the provided government document.
     
@@ -290,19 +419,30 @@ def analyze_citizen_doc(file_bytes, file_type, target_lang="English", status_con
         if status_container: status_container.markdown(f"🔄 **Phase 1/2:** Analyzing & Translating to {target_lang}...")
         response = client.models.generate_content(
             model="gemini-2.0-flash", 
-            contents=[types.Content(parts=[types.Part(text="Perform a sludge audit and define necessary user inputs."), types.Part(inline_data=types.Blob(mime_type=file_type, data=file_bytes))])],
-            config=types.GenerateContentConfig(system_instruction=system_prompt, response_mime_type="application/json", response_schema=CitizenGuide, temperature=0.0)
+            contents=[types.Content(parts=[
+                types.Part(text="Perform a sludge audit and define necessary user inputs."), 
+                types.Part(inline_data=types.Blob(mime_type=file_type, data=file_bytes))
+            ])],
+            config=types.GenerateContentConfig(
+                system_instruction=system_prompt, 
+                response_mime_type="application/json", 
+                response_schema=CitizenGuide, 
+                temperature=0.0
+            )
         )
         initial_result = json.loads(response.text)
+
         if status_container: status_container.markdown("🛡️ **Phase 2/2:** Self-Correcting Penalties & Deadlines...")
         return verify_safety(file_bytes, file_type, initial_result, CitizenGuide)
     except Exception as e:
         st.error(f"Analysis Error: {e}")
         return None
 
-# --- 追加: ユーザー入力をもとにドラフトを作成する関数 ---
 def generate_user_draft(context_summary, user_answers, target_lang="English"):
-    """Generates the final application draft or email based on user inputs."""
+    """
+    Generates a formal application draft or email inquiry based on user inputs.
+    This reduces the 'Cognitive Cost' of writing formal government correspondence.
+    """
     prompt = f"""
     You are a **Document Drafting Engine**. You are NOT a chat assistant.
     
@@ -333,9 +473,12 @@ def generate_user_draft(context_summary, user_answers, target_lang="English"):
         return f"Error generating draft: {e}"
 
 def generate_improved_image(summary, key_details, suggestions_list, aspect_ratio="3:4", doc_type="flyer"):
+    """
+    [Officials] Generates a visual prototype of an improved document.
+    Applies EAST framework suggestions to create a cleaner, more accessible layout.
+    """
     formatted_suggestions = "\n".join([f"- {s}" for s in suggestions_list])
     
-    # バイアス対策: 画像生成時に多様性を確保する指示を追加
     bias_prompt = "**DESIGN REQUIREMENT:** Ensure diverse representation in any human imagery. Use high-contrast colors for accessibility (WCAG AA compliance)."
     
     prompt_notice = f"""
@@ -354,7 +497,7 @@ def generate_improved_image(summary, key_details, suggestions_list, aspect_ratio
     
     {bias_prompt}
     
-    **⚠️ FOOTER:** "**※ AI-Generated Draft for Review Only**"
+    **⚠️ FOOTER:** "** Note: AI-Generated Draft for Review Only**"
     
     **INPUT DATA:**
     SUMMARY: {summary}
@@ -369,7 +512,7 @@ def generate_improved_image(summary, key_details, suggestions_list, aspect_ratio
     
     {bias_prompt}
     
-    **⚠️ FOOTER:** "**※ AI-Generated Draft Image**"
+    **⚠️ FOOTER:** "** Note: AI-Generated Draft Image**"
     
     **INPUT DATA:**
     CONTEXT: {summary}
@@ -382,7 +525,9 @@ def generate_improved_image(summary, key_details, suggestions_list, aspect_ratio
         response = client.models.generate_content(
             model="gemini-3-pro-image-preview", 
             contents=target_prompt,
-            config=types.GenerateContentConfig(tools=[{"google_search": {}}], image_config=types.ImageConfig(aspect_ratio=aspect_ratio, image_size="2K"))
+            config=types.GenerateContentConfig(
+                tools=[{"google_search": {}}], 
+                image_config=types.ImageConfig(aspect_ratio=aspect_ratio, image_size="2K"))
         )
         for part in response.parts:
             if part.inline_data:
@@ -392,8 +537,15 @@ def generate_improved_image(summary, key_details, suggestions_list, aspect_ratio
         st.error(f"Image Generation Error: {e}")
         return None, target_prompt
 
-# --- Component: Official Side ---
+# ==============================================================================
+# 5. UI COMPONENTS (TABS)
+# ==============================================================================
 def render_tab_content(key_prefix):
+    """
+    Renders the 'Official' persona tab (Notice/Flyer Audit).
+    Features a dashboard for Sludge scores and an image generator for improvements.
+    """
+    # Session State Management
     KEY_RESULT = f"{key_prefix}_audit_result"
     KEY_IMAGE = f"{key_prefix}_generated_image"
     KEY_PROMPT = f"{key_prefix}_last_prompt"
@@ -409,14 +561,13 @@ def render_tab_content(key_prefix):
     if KEY_AUDIO not in st.session_state: st.session_state[KEY_AUDIO] = None
     if KEY_LANG not in st.session_state: st.session_state[KEY_LANG] = "English"
     
+    # Header & Language Selection
     c_header, c_lang = st.columns([3, 1], vertical_alignment="bottom")
-
     with c_header:
         st.markdown("#### 📂 1. Upload File / Run Analysis")
     with c_lang:
         lang_options = ["English", "French", "Spanish", "Japanese", "German", "Italian", "Portuguese"]
         lang_code_map = {"English": "en", "French": "fr", "Spanish": "es", "Japanese": "ja", "German": "de", "Italian": "it", "Portuguese": "pt"}
-        # ラベルを非表示(collapsed)にしてアイコンのみのニュアンスにするか、短くする
         target_lang = st.selectbox(
             "Analysis Language", 
             lang_options, 
@@ -427,21 +578,19 @@ def render_tab_content(key_prefix):
         st.session_state[KEY_LANG] = target_lang
         selected_lang_code = lang_code_map[target_lang]
 
-
     has_result = st.session_state[KEY_RESULT] is not None
 
+    # Upload & Action Panel
     with st.expander("Open/Close Panel", expanded=not has_result):
         # File Uploader
         uploaded_file = st.file_uploader(
-            "Upload File", # ラベルは見えないがアクセシビリティのために残す
+            "Upload File",
             type=["pdf", "png", "jpg", "jpeg"], 
             key=f"{key_prefix}_uploader", 
-            label_visibility="collapsed" # ラベルを消してさらに詰める
+            label_visibility="collapsed"
         )
         
-        # ファイルがある場合のみボタンを表示するなど、ロジックはそのまま...
         if uploaded_file is not None:
-             # (中略: ファイル変更検知ロジック)
              if st.session_state[KEY_UPLOADED_NAME] != uploaded_file.name:
                 st.session_state[KEY_RESULT] = None
                 st.session_state[KEY_IMAGE] = None
@@ -451,9 +600,7 @@ def render_tab_content(key_prefix):
                 st.session_state[KEY_ASPECT] = get_file_aspect_ratio(file_bytes, uploaded_file.type)
                 st.rerun()
 
-             # ボタンの余白も少し気になる場合は columns を使って幅を調整しても良い
              if st.button("🚀 Run Analysis", type="secondary", key=f"{key_prefix}_analyze_btn", use_container_width=True):
-                # (中略: 分析実行ロジック)
                 status_box = st.empty()
                 file_bytes = uploaded_file.getvalue(); file_type = uploaded_file.type
                 result = analyze_sludge(file_bytes, file_type, target_lang=st.session_state[KEY_LANG], doc_type=key_prefix, status_container=status_box)
@@ -464,14 +611,15 @@ def render_tab_content(key_prefix):
                     st.session_state[KEY_AUDIO] = None
                     st.rerun()
 
+    # Results Display
     if st.session_state[KEY_RESULT]:
         result = st.session_state[KEY_RESULT]
         st.markdown("#### 📊 2. Audit Report")
         st.markdown(f'<div class="safety-badge">🛡️ Safety Protocol Verified ({st.session_state[KEY_LANG]})</div> ', unsafe_allow_html=True)
         
-        # --- TTS Audio Section ---
+        # Dashboard Container
         with st.container(border=True):
-            # 音声コントロールエリア
+            # Audio Controls
             c_audio_btn, c_audio_player = st.columns([1, 2], vertical_alignment="center")
             with c_audio_btn:
                 if st.button("🗣️ Read Report", key=f"{key_prefix}_tts_btn", use_container_width=True):
@@ -484,26 +632,21 @@ def render_tab_content(key_prefix):
                 if st.session_state[KEY_AUDIO]:
                     st.audio(st.session_state[KEY_AUDIO], format='audio/mp3')
 
+            # Score Calculations & Display
             s_deduction = result.get('search_cost', {}).get('deduction', 0)
-            s_score = 25 - s_deduction
-            
+            s_score = 25 - s_deduction            
             d_deduction = result.get('decision_cost', {}).get('deduction', 0)
-            d_score = 25 - d_deduction
-            
+            d_score = 25 - d_deduction            
             c_deduction = result.get('cognitive_cost', {}).get('deduction', 0)
-            c_score = 25 - c_deduction
-            
+            c_score = 25 - c_deduction            
             e_deduction = result.get('emotional_cost', {}).get('deduction', 0)
-            e_score = 25 - e_deduction
-            
+            e_score = 25 - e_deduction            
             total_score = result.get("total_score", 0)
 
             col_main, col_breakdown = st.columns([1.5, 3], gap="large", vertical_alignment="center")
 
             with col_main:
                 st.metric("Overall Score", f"{total_score}/100")
-
-
             with col_breakdown:
                 b1, b2, b3, b4 = st.columns(4)
                 with b1:
@@ -517,28 +660,25 @@ def render_tab_content(key_prefix):
 
             st.markdown('<hr style="margin-top: 0.5rem; margin-bottom: 0.5rem; border: 0; border-top: 1px solid #eee;" />', unsafe_allow_html=True)
 
+            # Textual Analysis
             col_text_1, col_text_2 = st.columns(2, gap="large")
             with col_text_1:
                 st.markdown("#### 🧐 Evaluation Summary")
                 st.write(result.get("evaluation_summary"))
-            
             with col_text_2:
                 st.markdown("#### ✨ Improvement Direction")
                 st.write(result.get("improvement_summary"))
 
+            # Expanders aligned in a new row
             col_exp_1, col_exp_2 = st.columns(2, gap="large")
-            
             with col_exp_1:
-                # 詳細コメントのExpander
                 with st.expander("▼ Detailed Evaluation (4 Sludge Scores)", expanded=False):
                     # スコア計算済みの変数は上部で定義されているのでそのまま使用可能
                     st.write(f"**🔍 Search:** {result.get('search_cost', {}).get('comment')}")
                     st.write(f"**🤔 Decision:** {result.get('decision_cost', {}).get('comment')}")
                     st.write(f"**🧠 Cognitive:** {result.get('cognitive_cost', {}).get('comment')}")
                     st.write(f"**😫 Emotional:** {result.get('emotional_cost', {}).get('comment')}")
-
             with col_exp_2:
-                # EAST提案のExpander
                 with st.expander("▼ EAST Suggestions", expanded=False):
                     east = result.get("east_suggestions", {})
                     st.write(f"**😌 Easy:** {east.get('easy')}")
@@ -546,6 +686,7 @@ def render_tab_content(key_prefix):
                     st.write(f"**🗣️ Social:** {east.get('social')}")
                     st.write(f"**⏱️ Timely:** {east.get('timely')}")
                     
+        # Generation Section
         st.markdown("""<div style="display: flex; align-items: center; justify-content: center; gap: 10px; padding: 20px; margin-top: 10px; margin-bottom: 10px;"><span style="font-size: 2rem;">⬇️</span><span style="color: #555; font-weight: bold; font-size: 1rem;">Create improved design based on this audit</span></div>""", unsafe_allow_html=True)
 
         col_settings, col_result = st.columns([1, 1], gap="medium")
@@ -563,6 +704,7 @@ def render_tab_content(key_prefix):
                 )
                 edited_suggestions_text = st.text_area("Instructions (EAST Framework)", value=combined_suggestions, height=250)
                 submitted = st.form_submit_button("📄 Generate Improved Document", type="secondary", use_container_width=True)
+
             if submitted:
                 with st.spinner("AI is designing..."):
                     suggestions_list = [line.strip() for line in edited_suggestions_text.split('\n') if line.strip()]
@@ -577,8 +719,12 @@ def render_tab_content(key_prefix):
                 st.download_button("⬇️ Download Image", data=buf.getvalue(), file_name=f"improved_{key_prefix}.png", mime="image/png", key=f"{key_prefix}_dl_btn", use_container_width=True)
                 st.write("")
                 st.caption("💡 To refine the result, adjust details in 3. Generation Settings and regenerate.")
-# --- Component: Citizen Side ---
+
 def render_citizen_tab():
+    """
+    Renders the 'Citizen' persona tab.
+    Focuses on simplified explanation, risk highlighting, and action drafting.
+    """
     key_prefix = "citizen"
     KEY_RESULT = f"{key_prefix}_result"
     KEY_UPLOADED_NAME = f"{key_prefix}_last_uploaded"
@@ -594,6 +740,7 @@ def render_citizen_tab():
     if KEY_LANG not in st.session_state: st.session_state[KEY_LANG] = "English"
     if KEY_DRAFT not in st.session_state: st.session_state[KEY_DRAFT] = None
 
+    # Header & Language
     c_header, c_lang = st.columns([3, 1], vertical_alignment="bottom")
     
     with c_header:
@@ -645,27 +792,31 @@ def render_citizen_tab():
         st.markdown("#### 📝 2. Document Guide")
         st.markdown(f'<div class="safety-badge">🛡️ Safety Protocol Verified ({st.session_state[KEY_LANG]})</div> ', unsafe_allow_html=True)
         
+        # Why is this confusing? (Sludge Analysis)
         with st.container(border=True):
             st.markdown("##### Why is this document confusing? (AI Analysis)")
             st.markdown(result.get("sludge_observation"))
 
-            # --- 変更: 役所への通報をExpanderに格納 ---
             with st.expander("📢 Report 'Sludge' to the Agency (Click to expand)", expanded=False):
                 with st.form(key=f"{key_prefix}_feedback_form"):
                     default_feedback = f"[Citizen Feedback - {st.session_state[KEY_LANG]}]\nIssues: {result.get('sludge_observation')}\n\nRequest: Please simplify."
                     st.text_area("Message to Send", value=default_feedback, height=100)
                     if st.form_submit_button("📨 Send Improvement Request"): st.success("✅ Sent!"); st.balloons()
 
+        # Guide Content (Summary, Risks, Dates)
         with st.container(border=True):
+            # Audio Player for Guide
             c_audio_btn, c_audio_player = st.columns([1, 2])
             with c_audio_btn:
                 if st.button("🗣️ Listen to Guide", key=f"{key_prefix}_guide_tts_btn", use_container_width=True):
                     with st.spinner("Generating audio..."):
-                        # Guide用のスクリプトを作成
                         script = f"Summary. {clean_markdown(result.get('simple_summary'))}. "
                         if result.get('risks_and_penalties'):
                             script += "Risks and Penalties. "
                             for r in result['risks_and_penalties']: script += f"{clean_markdown(r)}. "
+                        if result.get('required_documents'):
+                            script += "Required Documents. "
+                            for d in result['required_documents']: script += f"{clean_markdown(d)}. "
                         if result.get('important_dates'):
                             script += "Important Dates. "
                             for d in result['important_dates']: script += f"{clean_markdown(d)}. "
@@ -675,21 +826,25 @@ def render_citizen_tab():
             with c_audio_player:
                 if st.session_state[KEY_AUDIO_GUIDE]: st.audio(st.session_state[KEY_AUDIO_GUIDE], format='audio/mp3')
 
+            # Summary
             st.markdown("#### 💡 Summary: What does it mean?")
             summary_text = result.get("simple_summary", "")
             if summary_text:
                 summary_text = summary_text.replace("$", "\$")
             st.markdown(summary_text) 
 
+            # Risks
             if result.get("risks_and_penalties"):
                 st.markdown("#### ⚠️ Risks & Penalties")
                 risk_md = ""
                 for risk in result.get("risks_and_penalties", []):
                     safe_risk = risk.replace("$", "\$")
-                    risk_md += f"- 🚨 {safe_risk}\n"
+                    risk_md += f"- {safe_risk}\n"
                 st.markdown(risk_md)
             
             st.markdown('<hr style="margin-top: 0.5rem; margin-bottom: 0.5rem; border: 0; border-top: 1px solid #eee;" />', unsafe_allow_html=True)
+            
+            # Docs & Dates
             c1, c2 = st.columns(2, gap="large")
             with c1:
                 st.markdown("#### 📄 Required Documents")
@@ -712,17 +867,15 @@ def render_citizen_tab():
                 else: 
                     st.write("None explicitly stated.")
 
-        # --- 3. Action / Auto-Fill Wizard ---
+        # Action Section
         st.divider()
         st.markdown("#### 🚀 3. Take Action")
 
-        # アクションガイドの表示
         with st.container(border=True):
             c_act_btn, c_act_player = st.columns([1, 2])
             with c_act_btn:
                 if st.button("🗣️ Listen to Steps", key=f"{key_prefix}_action_tts_btn", use_container_width=True):
                     with st.spinner("Generating audio..."):
-                        # Action用のスクリプトを作成
                         script = f"Here are the steps to take. {clean_markdown(result.get('action_guide_markdown'))}"
                         audio_data = generate_audio_gtts(script, lang=selected_lang_code)
                         if audio_data: st.session_state[KEY_AUDIO_ACTION] = audio_data
@@ -732,6 +885,7 @@ def render_citizen_tab():
             st.markdown("Based on the document, here is what you need to do.")
             st.markdown(result.get("action_guide_markdown"))
         
+        # Draft Wizard
         st.markdown("#### ✍️ 4. Draft your Application / Email")
         st.markdown("Answer these simple questions, and AI will write the formal text for you.")
 
@@ -756,19 +910,22 @@ def render_citizen_tab():
                     draft_text = generate_user_draft(result.get("simple_summary"), user_answers, target_lang=st.session_state[KEY_LANG])
                     st.session_state[KEY_DRAFT] = draft_text
 
-            # 生成結果の表示
             if st.session_state[KEY_DRAFT]:
                 st.success("Draft created! Copy and paste below.")
                 st.text_area("📄 Final Draft", value=st.session_state[KEY_DRAFT], height=300)
                 st.caption("⚠️ Please review the draft before sending.")
 
-# --- Main App ---
+# ==============================================================================
+# 6. MAIN APP ENTRY POINT
+# ==============================================================================
 def main():
     apply_custom_styles()
 
+    # Header Section
     col_title, col_controls = st.columns([0.7, 0.3], gap="medium", vertical_alignment="bottom")
 
     with col_title:
+        # Render logo if available, else fallback to text
         logo_path = "logo.png"
         logo_base64 = img_to_base64(logo_path)
         if logo_base64:
@@ -782,7 +939,6 @@ def main():
                 unsafe_allow_html=True
             )
         else:
-            # ロゴが見つからない場合はテキストのみ
             st.markdown(
                 "<h1><a href='.' target='_self' style='text-decoration: none; color: inherit;'>Civic Reach</a></h1>", 
                 unsafe_allow_html=True
@@ -793,12 +949,11 @@ def main():
             Based on the OECD report *'Fixing Frictions: ‘Sludge audits’ around the world'*. Details of the methodology can be found [here](https://github.com/hrkzz/civic-reach/blob/main/methodology.md).
             """, unsafe_allow_html=True)
 
+    # Security & Reset Controls
     with col_controls:
-        # コントロールエリア内をさらに左右に分割してボタンを並べる
         c_policy, c_reset = st.columns([1, 1], gap="small")
         
         with c_policy:
-            # Expanderの代わりに Popover を使用 (見た目がボタンになりスッキリする)
             with st.popover("🔐 Security", use_container_width=True):
                 st.markdown("### Zero-Retention Policy")
                 st.info(
@@ -812,11 +967,15 @@ def main():
                 st.caption("Status: ● System Active")
 
         with c_reset:
-            # "Reset" ボタン: 赤色は維持しつつ、ラベルを短くして圧迫感を減らす
             if st.button("🗑️ Reset App", type="secondary", use_container_width=True, help="Wipe all data and restart session"):
                 clear_session_data()
         
-    tab_official_notice, tab_official_flyer, tab_citizen = st.tabs(["【Officials】 Notice Audit", "【Officials】 Flyer Audit", "【Citizens】 Doc Decipher"])
+    # Tabs for Different Personas
+    tab_official_notice, tab_official_flyer, tab_citizen = st.tabs([
+        "[Officials] Notice Audit", 
+        "[Officials] Flyer Audit", 
+        "[Citizens] Doc Decipher"
+        ])
     with tab_official_notice: render_tab_content("notice")
     with tab_official_flyer: render_tab_content("flyer")
     with tab_citizen: render_citizen_tab()
