@@ -412,7 +412,7 @@ def render_tab_content(key_prefix):
     c_header, c_lang = st.columns([3, 1], vertical_alignment="bottom")
 
     with c_header:
-        st.subheader("📂 1. Upload File / Run Analysis")
+        st.markdown("#### 📂 1. Upload File / Run Analysis")
     with c_lang:
         lang_options = ["English", "French", "Spanish", "Japanese", "German", "Italian", "Portuguese"]
         lang_code_map = {"English": "en", "French": "fr", "Spanish": "es", "Japanese": "ja", "German": "de", "Italian": "it", "Portuguese": "pt"}
@@ -460,7 +460,7 @@ def render_tab_content(key_prefix):
 
     if st.session_state[KEY_RESULT]:
         result = st.session_state[KEY_RESULT]
-        st.subheader("📊 2. Audit Report")
+        st.markdown("#### 📊 2. Audit Report")
         st.markdown(f'<div class="safety-badge">🛡️ Safety Protocol Verified ({st.session_state[KEY_LANG]})</div> ', unsafe_allow_html=True)
         
         # --- TTS Audio Section ---
@@ -516,7 +516,7 @@ def render_tab_content(key_prefix):
 
         col_settings, col_result = st.columns([1, 1], gap="medium")
         with col_settings:
-            st.subheader("📝 3. Generation Settings")
+            st.markdown("#### 📝 3. Generation Settings")
             with st.form(f"{key_prefix}_generation_settings_form"):
                 # フォームの初期値に翻訳されたテキストが入るようになる
                 edited_summary = st.text_area("Context", value=result.get("overall_summary"), height=100)
@@ -537,7 +537,7 @@ def render_tab_content(key_prefix):
                     if image: st.session_state[KEY_IMAGE] = image; st.session_state[KEY_PROMPT] = used_prompt; st.rerun()
 
         with col_result:
-            st.subheader("📄 4. Improved Draft")
+            st.markdown("#### 📄 4. Improved Draft")
             if st.session_state[KEY_IMAGE]:
                 st.image(st.session_state[KEY_IMAGE], caption="AI Generated Preview", use_container_width=True)
                 buf = io.BytesIO(); st.session_state[KEY_IMAGE].save(buf, format="PNG")
@@ -562,7 +562,7 @@ def render_citizen_tab():
     c_header, c_lang = st.columns([3, 1], vertical_alignment="bottom")
     
     with c_header:
-        st.subheader("📂 1. Upload Document / Run Analysis")
+        st.markdown("#### 📂 1. Upload File / Run Analysis")
     with c_lang:
         lang_options = ["English", "French", "Spanish", "Japanese", "German", "Italian", "Portuguese"]
         lang_code_map = {"English": "en", "French": "fr", "Spanish": "es", "Japanese": "ja", "German": "de", "Italian": "it", "Portuguese": "pt"}
@@ -601,19 +601,20 @@ def render_citizen_tab():
     if st.session_state[KEY_RESULT]:
         result = st.session_state[KEY_RESULT]
         
-        st.subheader("📝 2. Document Guide")
+        st.markdown("#### 📝 2. Document Guide")
         st.markdown(f'<div class="safety-badge">🛡️ Safety Protocol Verified ({st.session_state[KEY_LANG]})</div> ', unsafe_allow_html=True)
         
         # --- 変更: Sludge指摘を常時表示 ---
-        st.markdown("##### 🧐 Why is this document confusing? (AI Analysis)")
-        st.info(result.get("sludge_observation"), icon="🤖")
+        with st.container(border=True):
+            st.markdown("##### Why is this document confusing? (AI Analysis)")
+            st.markdown(result.get("sludge_observation"))
 
-        # --- 変更: 役所への通報をExpanderに格納 ---
-        with st.expander("📢 Report 'Sludge' to the Agency (Click to expand)", expanded=False):
-             with st.form(key=f"{key_prefix}_feedback_form"):
-                default_feedback = f"[Citizen Feedback - {st.session_state[KEY_LANG]}]\nIssues: {result.get('sludge_observation')}\n\nRequest: Please simplify."
-                st.text_area("Message to Send", value=default_feedback, height=100)
-                if st.form_submit_button("📨 Send Improvement Request"): st.success("✅ Sent!"); st.balloons()
+            # --- 変更: 役所への通報をExpanderに格納 ---
+            with st.expander("📢 Report 'Sludge' to the Agency (Click to expand)", expanded=False):
+                with st.form(key=f"{key_prefix}_feedback_form"):
+                    default_feedback = f"[Citizen Feedback - {st.session_state[KEY_LANG]}]\nIssues: {result.get('sludge_observation')}\n\nRequest: Please simplify."
+                    st.text_area("Message to Send", value=default_feedback, height=100)
+                    if st.form_submit_button("📨 Send Improvement Request"): st.success("✅ Sent!"); st.balloons()
 
         # 音声読み上げボタンなど
         col_audio_btn, col_audio_player = st.columns([1, 3])
@@ -627,29 +628,46 @@ def render_citizen_tab():
             if st.session_state[KEY_AUDIO]: st.audio(st.session_state[KEY_AUDIO], format='audio/mp3')
 
         with st.container(border=True):
-            st.markdown("### 💡 Summary: What does it mean?")
-            st.write(result.get("simple_summary")) # Infoアイコン削除でスッキリさせる
+            st.markdown("#### 💡 Summary: What does it mean?")
+            summary_text = result.get("simple_summary", "")
+            if summary_text:
+                summary_text = summary_text.replace("$", "\$")
+            st.markdown(summary_text) 
 
             if result.get("risks_and_penalties"):
-                st.markdown("### ⚠️ Risks & Penalties")
-                for risk in result.get("risks_and_penalties", []): st.error(risk, icon="🚨")
+                st.markdown("#### ⚠️ Risks & Penalties")
+                risk_md = ""
+                for risk in result.get("risks_and_penalties", []):
+                    safe_risk = risk.replace("$", "\$")
+                    risk_md += f"- 🚨 {safe_risk}\n"
+                st.markdown(risk_md)
             
-            st.divider()
+            st.markdown('<hr style="margin-top: 0.5rem; margin-bottom: 0.5rem; border: 0; border-top: 1px solid #eee;" />', unsafe_allow_html=True)
             c1, c2 = st.columns(2, gap="large")
             with c1:
-                st.markdown("### 📄 Required Documents")
+                st.markdown("#### 📄 Required Documents")
                 if result.get("required_documents"):
-                    for doc in result.get("required_documents", []): st.write(f"- {doc}")
-                else: st.write("None explicitly stated.")
+                    req_md = ""
+                    for doc in result.get("required_documents", []):
+                        safe_doc = doc.replace("$", "\$")
+                        req_md += f"- {safe_doc}\n"
+                    st.markdown(req_md)
+                else: 
+                    st.write("None explicitly stated.")
             with c2:
-                st.markdown("### 📅 Important Dates")
+                st.markdown("#### 📅 Important Dates")
                 if result.get("important_dates"):
-                    for date in result.get("important_dates", []): st.warning(f"🗓️ {date}")
-                else: st.write("None explicitly stated.")
+                    date_md = ""
+                    for date in result.get("important_dates", []):
+                        safe_date = date.replace("$", "\$")
+                        date_md += f"- 🗓️ {safe_date}\n"
+                    st.markdown(date_md)
+                else: 
+                    st.write("None explicitly stated.")
 
         # --- 新機能: 3. Action / Auto-Fill Wizard ---
         st.divider()
-        st.subheader("🚀 3. Take Action")
+        st.markdown("#### 🚀 3. Take Action")
         st.markdown("Based on the document, here is what you need to do.")
 
         # アクションガイドの表示
