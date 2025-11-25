@@ -4,7 +4,7 @@ import re
 import io
 import base64
 import pypdf
-from PIL import Image
+from PIL import Image, ImageChops
 from dotenv import load_dotenv
 from gtts import gTTS
 
@@ -182,6 +182,8 @@ class SludgeAudit(BaseModel):
     overall_summary: str = Field(..., description="Brief summary of the document context.")
     evaluation_summary: str = Field(..., description="Overall assessment of the audit results.")
     improvement_summary: str = Field(..., description="Summary of recommended improvements.")
+    sender_details: str | None = Field(None, description="The verbatim text block identifying the Sender (Agency Name, Address). Return null if not found.")
+    recipient_details: str | None = Field(None, description="The verbatim text block identifying the Recipient (Name, Address). Return null if not found.")
     key_details: list[ExtractedDetail] = Field(..., description="[CRITICAL] A dynamic list of the most important factual details extracted from the document.")
     search_cost: CostDetail = Field(..., description="Evaluation of Search Cost.")
     decision_cost: CostDetail = Field(..., description="Evaluation of Decision Cost.")
@@ -233,6 +235,53 @@ def get_file_aspect_ratio(file_bytes, file_type):
             else: return "1:1"
     except Exception: pass
     return "3:4"
+
+def trim_black_borders(img):
+    """
+    Trims solid black borders from an image.
+    Creates a difference image against a purely black image to find the bounding box of non-black content.
+    """
+    # Create a black background image of the same size and mode
+    bg = Image.new(img.mode, img.size, (0, 0, 0))
+    # Find the difference between the original image and the black background
+    diff = ImageChops.difference(img, bg)
+    # Get the bounding box of the non-zero regions in the difference image
+    bbox = diff.getbbox()
+    if bbox:
+        # Crop the image to the bounding box
+        return img.crop(bbox)
+    # If the image is entirely black, return it as is (or handle as error)
+    return img
+
+def parse_integrated_details(text):
+    """
+    Parses the single text area content to extract Sender, Recipient, and other details.
+    Expected format:
+    SENDER: ...
+    RECIPIENT: ...
+    Label: Value
+    """
+    lines = text.split('\n')
+    sender = ""
+    recipient = ""
+    other_details = []
+    
+    current_key = None
+    
+    for line in lines:
+        line = line.strip()
+        if not line: continue
+        
+        # Check for specific reserved keys
+        if line.upper().startswith("SENDER:"):
+            sender = line.split(":", 1)[1].strip()
+        elif line.upper().startswith("RECIPIENT:"):
+            recipient = line.split(":", 1)[1].strip()
+        else:
+            # Keep other lines as Key Details
+            other_details.append(line)
+            
+    return sender, recipient, "\n".join(other_details)
 
 def clear_session_data():
     """
@@ -364,12 +413,13 @@ def analyze_sludge(file_bytes, file_type, target_lang="English", doc_type="leafl
     prompt_notice = f"""
     You are a Behavioral Scientist and Senior Government Auditor. Audit the provided Official Administrative Notice.
     {bias_instruction}
-    
-    **CRITICAL INSTRUCTION FOR 'KEY DETAILS':**
-    You are a Behavioral Scientist and Senior Government Auditor. Audit the provided Official Document.
-    {bias_instruction}
-    
-    **CRITICAL INSTRUCTION FOR 'KEY DETAILS':**
+
+    **TASK 1: LAYOUT DATA EXTRACTION (Verbatim)**
+    Extract the following strictly from the document text.
+    - **sender_details**: The full text block identifying the Sender (Agency Name, Department, Address, Return Address). *If strictly generic or not present, return null.*
+    - **recipient_details**: The full text block identifying the Recipient (Name, Address, Postcode). *If it is a template/form without a specific recipient, return null.*
+
+    **TASK 2: CRITICAL INSTRUCTION FOR 'KEY DETAILS' (DO NOT OMIT):**
     1. First, determine the **CORE PURPOSE** of this document (e.g., Demand for Payment, Information Update, Legal Summons).
     2. Based on that purpose, extract the **5-10 most critical pieces of information** that the user absolutely needs.
     
@@ -490,7 +540,9 @@ def generate_user_draft(context_summary, user_answers, target_lang="English"):
     except Exception as e:
         return f"Error generating draft: {e}"
 
-def generate_improved_image(summary, key_details, suggestions_list, aspect_ratio="3:4", doc_type="leaflet"):
+def generate_improved_image(summary, key_details, suggestions_list, 
+                            sender_info=None, recipient_info=None, 
+                            aspect_ratio="3:4", doc_type="leaflet"):
     """
     [Officials] Generates a visual prototype of an improved document.
     Applies EAST framework suggestions to create a cleaner, more accessible layout.
@@ -505,38 +557,66 @@ def generate_improved_image(summary, key_details, suggestions_list, aspect_ratio
                 formatted_details += f"{item.label}: {item.value}\n"
             elif isinstance(item, dict):
                 formatted_details += f"{item.get('label', 'INFO')}: {item.get('value', '')}\n"
-                
+
     bias_prompt = "**DESIGN REQUIREMENT:** Ensure diverse representation in any human imagery. Use high-contrast colors for accessibility (WCAG AA compliance)."
     
-    prompt_notice = f"""
-    Create a **PRISTINE DIGITAL DOCUMENT** (like a direct PDF export or a high-res screenshot of a Word doc).
-    
-    **VISUAL STYLE:**
-    - **Background:** Pure Flat White (#FFFFFF). Absolutely NO paper texture, NO shadows, NO creases, and NO folds.
-    - **Typography:** Crisp, sharp, black professional sans-serif font (Arial or Helvetica).
-    - **Layout:** Clean, structured, official government layout.
-    - **Quality:** 2D Flat Vector style. Not a photo of a paper.
+    if sender_info and sender_info.strip():
+        header_instruction = f"Official Agency Logo alongside the Agency Name and return address. **MANDATORY: Use this EXACT text for the sender:**\n>>> {sender_info}"
+    else:
+        header_instruction = "Official Agency Logo alongside a generic Agency Name. (Do not invent a specific address if none provided)."
 
-    **CONTENT STRUCTURE:**
-    - Header: Official Agency Logo & "Official Notice" text.
-    - Body: Clear, left-aligned text based on the SUMMARY provided.
-    - Key Info Box: A clearly outlined box containing the KEY DETAILS.
+    if recipient_info and recipient_info.strip():
+        recipient_instruction = f"Place this **EXACT RECIPIENT TEXT** in the standard window envelope position:\n>>> {recipient_info}"
+    else:
+        recipient_instruction = "Leave the recipient address block BLANK (as if for a template) or use '[Recipient Name/Address]' placeholder."
+
+    prompt_notice = f"""
+    Create a **DIRECT DIGITAL EXPORT** (e.g., a clean PDF screenshot) of a **FORMAL GOVERNMENT BUSINESS LETTER** (A4 standard layout).
+    The final image must be a strictly **2D, full-bleed, borderless** digital graphic. The image canvas represents the document boundaries exactly.
+
+    **VISUAL STYLE RESTRICTIONS (CRITICAL - DO NOT IGNORE):**
+    - **ABSOLUTELY NO PHOTOREALISM:** The image must NOT look like a photograph of a physical paper lying on a surface.
+    - **NO** shadows, **NO** paper texture, **NO** creases, **NO** curled edges, and **NO** background environment (like a desk).
+    - **Background:** **PURE FLAT WHITE HEX #FFFFFF** only, extending precisely to all four edges of the image canvas.
+    - **NO** large colorful banners, **NO** excessive icons, **NO** giant QR codes dominating the page.
+    - Keep it highly professional, authoritative, and clean.
+    - **Typography:** Professional, formal serif or clear sans-serif fonts standard for business correspondence (e.g., Times New Roman, Arial).
     
+    **LAYOUT STRUCTURE (Strictly follow standard letter format):**
+    1. **Header (Top Right):**
+       - Place the Official Agency Logo alongside the Agency Name prominently.
+       - Below them, organize the {header_instruction}, **Date**, and relevant **Reference Numbers**.
+       - **CRITICAL DESIGN RULE:** Do NOT cram this section. **Prioritize whitespace.** If the input contains general helplines or websites, move them out of this header and place them near the closing or in the Key Information Section to keep the top-right clean and uncluttered.
+    2. **Recipient Block (Top Left):** {recipient_instruction}
+    3. **Salutation:** Formal greeting (e.g., "Dear [Recipient Name],").
+    4. **Main Body:** Clear paragraphs based strictly on the provided SUMMARY text. Use plain English principles.
+    5. **Key Information Section:** A distinct, scannable section integrated into the letter's flow (e.g., a clean table with borders, or a bolded list) containing the KEY DETAILS. **Do not make this a giant colored infographic box.**
+    6. **Closing:** Formal closing (e.g., "Yours sincerely,") followed by a signature block/official role title.
+
     {bias_prompt}
     
-    **FOOTER:** "AI-Generated Draft for Review Only"
+    **FOOTER (Small, bottom center):** "AI-Generated Draft for Review Only - Not for Circulation"
     
-    **INPUT DATA:**
-    SUMMARY: {summary}
-    KEY DETAILS (Must be visible): {key_details}
-    IMPROVEMENTS APPLIED: {formatted_suggestions}
+    **INPUT DATA TO INTEGRATE:**
+    SUMMARY (Body Text Content): {summary}
+    KEY DETAILS (To be placed in the Key Information Section): 
+    {formatted_details}
+    IMPROVEMENTS TO APPLY (EAST Framework guidelines for tone and clarity): 
+    {formatted_suggestions}
     """
 
     prompt_leaflet = f"""
-    Create a **High-Quality Digital Graphic Design Asset** (Digital Poster/Infographic).
-    **VISUAL STYLE:** Modern, flat design, high contrast, clean vector art style. 
-    **Background:** Solid color or subtle gradient (No paper texture).
+    Create a **High-Quality Digital Graphic Design Asset** (Digital Poster/Infographic/Flyer).
+    The image must be a **full-bleed, borderless** design, filling the entire canvas with **NO extra background or padding**.
     
+    **VISUAL STYLE:** Modern, flat design, high contrast, clean vector art style with engaging visual hierarchy. 
+    **Background:** Solid color or subtle gradient (No paper texture), extending to **all edges**.
+
+    **CRITICAL CONTENT RULES (DO NOT IGNORE):**
+    1. **NO INTERNAL LABELS:** Do **NOT** print the words "EAST", "ATTRACTIVE", "EASY", "SOCIAL", or "TIMELY" on the poster. These are design principles for YOU to follow, not text to display to the citizen.
+    2. **QR CODE LIMIT:** Generate **MAXIMUM ONE** clear QR code if a digital action is required. Do not place multiple decorative QR codes.
+    3. **CLARITY:** Use icons and visual sections to explain the content, but keep text labels natural (e.g., use "How to Pay" instead of "Easy").
+
     {bias_prompt}
     
     **FOOTER:** "AI-Generated Draft Image"
@@ -544,10 +624,12 @@ def generate_improved_image(summary, key_details, suggestions_list, aspect_ratio
     **INPUT DATA:**
     CONTEXT: {summary}
     DETAILS: {key_details}
-    IMPROVEMENTS APPLIED: {formatted_suggestions}
+    IMPROVEMENTS TO APPLY (Use these as design instructions, do not print them): 
+    {suggestions_list}
     """
 
     target_prompt = prompt_notice if doc_type == "notice" else prompt_leaflet
+    
     try:
         response = client.models.generate_content(
             model="gemini-3-pro-image-preview", 
@@ -558,7 +640,9 @@ def generate_improved_image(summary, key_details, suggestions_list, aspect_ratio
         )
         for part in response.parts:
             if part.inline_data:
-                return Image.open(io.BytesIO(part.inline_data.data)), target_prompt
+                raw_image = Image.open(io.BytesIO(part.inline_data.data))
+                trimmed_image = trim_black_borders(raw_image)
+                return trimmed_image, target_prompt
         return None, target_prompt
     except Exception as e:
         st.error(f"Image Generation Error: {e}")
@@ -721,8 +805,18 @@ def render_tab_content(key_prefix):
             st.markdown("#### 📝 3. Generation Settings")
             with st.form(f"{key_prefix}_generation_settings_form"):
                 edited_summary = st.text_area("Context", value=result.get("overall_summary"), height=150)
-                key_details_data = result.get("key_details", [])
+
                 formatted_text_lines = []
+                extracted_sender = result.get("sender_details")
+                if extracted_sender and "Not Found" not in extracted_sender:
+                    formatted_text_lines.append(f"SENDER: {extracted_sender.replace(chr(10), ', ')}")
+                extracted_recipient = result.get("recipient_details")
+                if extracted_recipient and "Not Found" not in extracted_recipient:
+                    formatted_text_lines.append(f"RECIPIENT: {extracted_recipient.replace(chr(10), ', ')}")
+                if formatted_text_lines:
+                    formatted_text_lines.append("")
+
+                key_details_data = result.get("key_details", [])
                 if isinstance(key_details_data, list):
                     for item in key_details_data:
                         label = ""
@@ -730,7 +824,7 @@ def render_tab_content(key_prefix):
                         if hasattr(item, "label"):
                             label = item.label
                             value = item.value
-                        elif isinstance(item, dict): # Dict
+                        elif isinstance(item, dict):
                             label = item.get("label", "Info")
                             value = item.get("value", "")
                         formatted_text_lines.append(f"{label}: {value}")
@@ -742,7 +836,7 @@ def render_tab_content(key_prefix):
                 edited_key_details_text = st.text_area(
                     "Key Details (Edit Text)", 
                     value=default_text_value, 
-                    height=250, 
+                    height=350, 
                     help="Simply edit the text lines. format is 'Label: Value'."
                 )
                 east = result.get("east_suggestions", {})
@@ -757,11 +851,14 @@ def render_tab_content(key_prefix):
 
             if submitted:
                 with st.spinner("AI is designing..."):
+                    parsed_sender, parsed_recipient, parsed_details = parse_integrated_details(edited_key_details_text)
                     suggestions_list = [line.strip() for line in edited_suggestions_text.split('\n') if line.strip()]
                     image, used_prompt = generate_improved_image(
                         edited_summary, 
-                        edited_key_details_text, 
-                        suggestions_list, 
+                        parsed_details,
+                        suggestions_list,
+                        sender_info=parsed_sender,
+                        recipient_info=parsed_recipient, 
                         aspect_ratio=st.session_state[KEY_ASPECT], 
                         doc_type=key_prefix
                         )
