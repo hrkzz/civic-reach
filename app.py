@@ -12,6 +12,7 @@ import streamlit as st
 from google import genai
 from google.genai import types
 from pydantic import BaseModel, Field
+from typing import Literal
 
 # ==============================================================================
 # 1. CONFIGURATION & SETUP
@@ -170,13 +171,18 @@ class EastSuggestions(BaseModel):
     social: str = Field(..., description="Improvement suggestion based on 'Social' (Norms/Trust).")
     timely: str = Field(..., description="Improvement suggestion based on 'Timely' (Promptness).")
 
+class ExtractedDetail(BaseModel):
+    label: str = Field(..., description="The label of the information (e.g., 'Payment Reference', 'Polling Station', 'Hearing Date').")
+    value: str = Field(..., description="The exact extracted value.")
+    category: Literal["Deadline", "Financial", "Identifier", "Contact", "Action", "Legal", "Other"] = Field(..., description="The category of this information.")
+    
 class SludgeAudit(BaseModel):
     """Master schema for the 'Official' audit report. Calculates a 'Friction Score' and provides actionable feedback."""
     total_score: int = Field(..., description="Total score out of 100 (100 minus sum of deductions).")
     overall_summary: str = Field(..., description="Brief summary of the document context.")
     evaluation_summary: str = Field(..., description="Overall assessment of the audit results.")
     improvement_summary: str = Field(..., description="Summary of recommended improvements.")
-    key_details: str = Field(..., description="[CRITICAL] Exact extraction of factual information.")
+    key_details: list[ExtractedDetail] = Field(..., description="[CRITICAL] A dynamic list of the most important factual details extracted from the document.")
     search_cost: CostDetail = Field(..., description="Evaluation of Search Cost.")
     decision_cost: CostDetail = Field(..., description="Evaluation of Decision Cost.")
     cognitive_cost: CostDetail = Field(..., description="Evaluation of Cognitive Cost.")
@@ -360,13 +366,22 @@ def analyze_sludge(file_bytes, file_type, target_lang="English", doc_type="leafl
     {bias_instruction}
     
     **CRITICAL INSTRUCTION FOR 'KEY DETAILS':**
-    You MUST extract EVERY single factual detail from the document, including:
-    - Exact dollar amounts, tax rates, or fees.
-    - Specific dates (deadlines, issuance dates).
-    - Case numbers, reference IDs, phone numbers, URLs.
-    - Legal clauses or citation numbers.
+    You are a Behavioral Scientist and Senior Government Auditor. Audit the provided Official Document.
+    {bias_instruction}
     
-    **Do not summarize key details; extract them verbatim.** If the document is a 'Notice', maintain a formal, authoritative tone in your analysis.
+    **CRITICAL INSTRUCTION FOR 'KEY DETAILS':**
+    1. First, determine the **CORE PURPOSE** of this document (e.g., Demand for Payment, Information Update, Legal Summons).
+    2. Based on that purpose, extract the **5-10 most critical pieces of information** that the user absolutely needs.
+    
+    **Examples of adaptability:**
+    - If it's a **Tax Bill**: Extract Amount, Deadline, Tax Year, Payment Reference.
+    - If it's a **Voting Card**: Extract Polling Station Address, Voting Date, Voter ID requirements.
+    - If it's a **License**: Extract License Number, Expiry Date, License Class.
+    
+    **RULES:**
+    - Extract details verbatim.
+    - Do NOT summarize IDs or Reference Numbers.
+    - Categorize each detail correctly (Deadline, Financial, Identifier, etc.).
     
     Output in JSON.
     """
@@ -481,7 +496,16 @@ def generate_improved_image(summary, key_details, suggestions_list, aspect_ratio
     Applies EAST framework suggestions to create a cleaner, more accessible layout.
     """
     formatted_suggestions = "\n".join([f"- {s}" for s in suggestions_list])
-    
+    formatted_details = ""
+    if isinstance(key_details, str):
+        formatted_details = key_details
+    elif isinstance(key_details, list):
+        for item in key_details:
+            if hasattr(item, 'label') and hasattr(item, 'value'):
+                formatted_details += f"{item.label}: {item.value}\n"
+            elif isinstance(item, dict):
+                formatted_details += f"{item.get('label', 'INFO')}: {item.get('value', '')}\n"
+                
     bias_prompt = "**DESIGN REQUIREMENT:** Ensure diverse representation in any human imagery. Use high-contrast colors for accessibility (WCAG AA compliance)."
     
     prompt_notice = f"""
@@ -697,7 +721,30 @@ def render_tab_content(key_prefix):
             st.markdown("#### 📝 3. Generation Settings")
             with st.form(f"{key_prefix}_generation_settings_form"):
                 edited_summary = st.text_area("Context", value=result.get("overall_summary"), height=150)
-                edited_key_details = st.text_area("Key Details", value=result.get("key_details"), height=200)
+                key_details_data = result.get("key_details", [])
+                formatted_text_lines = []
+                if isinstance(key_details_data, list):
+                    for item in key_details_data:
+                        label = ""
+                        value = ""
+                        if hasattr(item, "label"):
+                            label = item.label
+                            value = item.value
+                        elif isinstance(item, dict): # Dict
+                            label = item.get("label", "Info")
+                            value = item.get("value", "")
+                        formatted_text_lines.append(f"{label}: {value}")
+                elif isinstance(key_details_data, str):
+                    formatted_text_lines.append(key_details_data)
+
+                default_text_value = "\n".join(formatted_text_lines)
+
+                edited_key_details_text = st.text_area(
+                    "Key Details (Edit Text)", 
+                    value=default_text_value, 
+                    height=250, 
+                    help="Simply edit the text lines. format is 'Label: Value'."
+                )
                 east = result.get("east_suggestions", {})
                 combined_suggestions = (
                     f"- Easy: {east.get('easy', '')}\n"
@@ -711,8 +758,17 @@ def render_tab_content(key_prefix):
             if submitted:
                 with st.spinner("AI is designing..."):
                     suggestions_list = [line.strip() for line in edited_suggestions_text.split('\n') if line.strip()]
-                    image, used_prompt = generate_improved_image(edited_summary, edited_key_details, suggestions_list, aspect_ratio=st.session_state[KEY_ASPECT], doc_type=key_prefix)
-                    if image: st.session_state[KEY_IMAGE] = image; st.session_state[KEY_PROMPT] = used_prompt; st.rerun()
+                    image, used_prompt = generate_improved_image(
+                        edited_summary, 
+                        edited_key_details_text, 
+                        suggestions_list, 
+                        aspect_ratio=st.session_state[KEY_ASPECT], 
+                        doc_type=key_prefix
+                        )
+                    if image: 
+                        st.session_state[KEY_IMAGE] = image
+                        st.session_state[KEY_PROMPT] = used_prompt
+                        st.rerun()
 
         with col_result:
             st.markdown("#### 📄 4. Improved Draft")
