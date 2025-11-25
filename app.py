@@ -948,17 +948,6 @@ def render_citizen_tab():
         st.markdown("#### 📝 2. Document Guide")
         st.markdown(f'<div class="safety-badge">🛡️ Safety Protocol Verified ({st.session_state[KEY_LANG]})</div> ', unsafe_allow_html=True)
         
-        # Why is this confusing? (Sludge Analysis)
-        with st.container(border=True):
-            st.markdown("##### Why is this document confusing? (AI Analysis)")
-            st.markdown(result.get("sludge_observation"))
-
-            with st.expander("📢 Report 'Sludge' to the Agency (Click to expand)", expanded=False):
-                with st.form(key=f"{key_prefix}_feedback_form"):
-                    default_feedback = f"[Citizen Feedback - {st.session_state[KEY_LANG]}]\nIssues: {result.get('sludge_observation')}\n\nRequest: Please simplify."
-                    st.text_area("Message to Send", value=default_feedback, height=100)
-                    if st.form_submit_button("📨 Send Improvement Request"): st.success("✅ Sent!"); st.balloons()
-
         # Guide Content (Summary, Risks, Dates)
         with st.container(border=True):
             # Audio Player for Guide
@@ -1070,6 +1059,21 @@ def render_citizen_tab():
                 st.text_area("📄 Final Draft", value=st.session_state[KEY_DRAFT], height=300)
                 st.caption("⚠️ Please review the draft before sending.")
 
+        st.divider() 
+        
+        # Why is this confusing? (Sludge Analysis)
+        with st.container(border=True):
+            st.markdown("##### Why is this document confusing? (AI Analysis)")
+            st.markdown(result.get("sludge_observation"))
+
+            with st.expander("📢 Report 'Sludge' to the Agency (Click to expand)", expanded=False):
+                with st.form(key=f"{key_prefix}_feedback_form"):
+                    default_feedback = f"[Citizen Feedback - {st.session_state[KEY_LANG]}]\nIssues: {result.get('sludge_observation')}\n\nRequest: Please simplify."
+                    st.text_area("Message to Send", value=default_feedback, height=150)
+                    if st.form_submit_button("📨 Send Improvement Request"): st.success("✅ Sent!"); st.balloons()
+
+
+
 # ==============================================================================
 # 6. MAIN APP ENTRY POINT
 # ==============================================================================
@@ -1100,7 +1104,7 @@ def main():
             )
 
         st.markdown("""
-            **Reducing Friction in Government Services** | Behavioral Science × Generative AI<br>
+            **Reducing Friction in Government Services** | Behavioural Science × Generative AI<br>
             Based on the OECD report *'Fixing Frictions: ‘Sludge audits’ around the world'*. Details of the methodology can be found [here](https://github.com/hrkzz/civic-reach/blob/main/methodology.md).
             """, unsafe_allow_html=True)
 
