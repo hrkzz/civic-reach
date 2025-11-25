@@ -266,7 +266,7 @@ def prepare_speech_script(data, mode="official"):
     """Constructs a coherent script for the TTS engine based on the structured JSON data."""
     script = ""
     if mode == "official":
-        script += f"Overall Score: {data['total_score']}. "
+        script += f"Audit Score: {data['total_score']}. "
         script += f"Evaluation Summary. "
         script += f"{clean_markdown(data['evaluation_summary'])}. "
         script += f"Detailed Evaluation. "
@@ -340,7 +340,7 @@ def verify_safety(file_bytes, file_type, initial_json, model_schema):
         print(f"Verification Error: {e}")
         return initial_json
 
-def analyze_sludge(file_bytes, file_type, target_lang="English", doc_type="flyer", status_container=None):
+def analyze_sludge(file_bytes, file_type, target_lang="English", doc_type="leaflet", status_container=None):
     """
     [Officials] Conducts a comprehensive 'Sludge Audit' on the document.
     Evaluates costs (Search, Decision, etc.) and suggests EAST framework improvements.
@@ -371,8 +371,8 @@ def analyze_sludge(file_bytes, file_type, target_lang="English", doc_type="flyer
     Output in JSON.
     """
 
-    prompt_flyer = f"You are a Public Information Design Specialist. Audit the provided flyer. {bias_instruction} Output in JSON."  
-    system_prompt = prompt_notice if doc_type == "notice" else prompt_flyer
+    prompt_leaflet = f"You are a Public Information Design Specialist. Audit the provided leaflet. {bias_instruction} Output in JSON."  
+    system_prompt = prompt_notice if doc_type == "notice" else prompt_leaflet
 
     try:
         if status_container: status_container.markdown(f"🔄 **Phase 1/2:** Auditing & Translating to {target_lang}...")
@@ -475,7 +475,7 @@ def generate_user_draft(context_summary, user_answers, target_lang="English"):
     except Exception as e:
         return f"Error generating draft: {e}"
 
-def generate_improved_image(summary, key_details, suggestions_list, aspect_ratio="3:4", doc_type="flyer"):
+def generate_improved_image(summary, key_details, suggestions_list, aspect_ratio="3:4", doc_type="leaflet"):
     """
     [Officials] Generates a visual prototype of an improved document.
     Applies EAST framework suggestions to create a cleaner, more accessible layout.
@@ -500,7 +500,7 @@ def generate_improved_image(summary, key_details, suggestions_list, aspect_ratio
     
     {bias_prompt}
     
-    **⚠️ FOOTER:** "** Note: AI-Generated Draft for Review Only**"
+    **FOOTER:** "AI-Generated Draft for Review Only"
     
     **INPUT DATA:**
     SUMMARY: {summary}
@@ -508,14 +508,14 @@ def generate_improved_image(summary, key_details, suggestions_list, aspect_ratio
     IMPROVEMENTS APPLIED: {formatted_suggestions}
     """
 
-    prompt_flyer = f"""
+    prompt_leaflet = f"""
     Create a **High-Quality Digital Graphic Design Asset** (Digital Poster/Infographic).
     **VISUAL STYLE:** Modern, flat design, high contrast, clean vector art style. 
     **Background:** Solid color or subtle gradient (No paper texture).
     
     {bias_prompt}
     
-    **⚠️ FOOTER:** "** Note: AI-Generated Draft Image**"
+    **FOOTER:** "AI-Generated Draft Image"
     
     **INPUT DATA:**
     CONTEXT: {summary}
@@ -523,7 +523,7 @@ def generate_improved_image(summary, key_details, suggestions_list, aspect_ratio
     IMPROVEMENTS APPLIED: {formatted_suggestions}
     """
 
-    target_prompt = prompt_notice if doc_type == "notice" else prompt_flyer
+    target_prompt = prompt_notice if doc_type == "notice" else prompt_leaflet
     try:
         response = client.models.generate_content(
             model="gemini-3-pro-image-preview", 
@@ -545,7 +545,7 @@ def generate_improved_image(summary, key_details, suggestions_list, aspect_ratio
 # ==============================================================================
 def render_tab_content(key_prefix):
     """
-    Renders the 'Official' persona tab (Notice/Flyer Audit).
+    Renders the 'Official' persona tab (Notice/Leaflet Audit).
     Features a dashboard for Sludge scores and an image generator for improvements.
     """
     # Session State Management
@@ -649,7 +649,7 @@ def render_tab_content(key_prefix):
             col_main, col_breakdown = st.columns([1.5, 3], gap="large", vertical_alignment="center")
 
             with col_main:
-                st.metric("Overall Score", f"{total_score}/100")
+                st.metric("Audit Score", f"{total_score}/100")
             with col_breakdown:
                 b1, b2, b3, b4 = st.columns(4)
                 with b1:
@@ -889,10 +889,10 @@ def render_citizen_tab():
             st.markdown(result.get("action_guide_markdown"))
         
         # Draft Wizard
-        st.markdown("#### ✍️ 4. Draft your Application / Email")
+        st.markdown("#### ✍️ 4. Draft Wizard")
         st.markdown("Answer these simple questions, and AI will write the formal text for you.")
 
-        # ダイナミックフォームの生成
+        # Dynamic form
         with st.container(border=True):
             user_answers = {}
             with st.form(key="action_wizard_form"):
@@ -900,7 +900,6 @@ def render_citizen_tab():
                 if not questions:
                     questions = ["What is your full name?", "What is your reference number?"] # Fallback
 
-                # 2列にしてコンパクトに表示
                 col_q1, col_q2 = st.columns(2)
                 for i, q in enumerate(questions):
                     target_col = col_q1 if i % 2 == 0 else col_q2
@@ -967,20 +966,19 @@ def main():
                     * **Enterprise Protection:** Inputs are NOT used for model training.
                     """
                 )
-                st.caption("Status: ● System Active")
 
         with c_reset:
             if st.button("🗑️ Reset App", type="secondary", use_container_width=True, help="Wipe all data and restart session"):
                 clear_session_data()
         
     # Tabs for Different Personas
-    tab_official_notice, tab_official_flyer, tab_citizen = st.tabs([
+    tab_official_notice, tab_official_leaflet, tab_citizen = st.tabs([
         "[Officials] Notice Audit", 
-        "[Officials] Flyer Audit", 
+        "[Officials] Leaflet Audit", 
         "[Citizens] Doc Decipher"
         ])
     with tab_official_notice: render_tab_content("notice")
-    with tab_official_flyer: render_tab_content("flyer")
+    with tab_official_leaflet: render_tab_content("leaflet")
     with tab_citizen: render_citizen_tab()
 
     st.divider()
