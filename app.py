@@ -301,14 +301,14 @@ def clean_markdown(text):
     text = re.sub(r'\n+', '. ', text)
     return text
 
-def generate_audio_gtts(text, lang='en'):
+def generate_audio_gtts(text, lang='en', tld='com'):
     """
     Generates audio using Google Text-to-Speech (gTTS).
     Note: In a production G7 environment, this could be swapped for the Google Cloud TTS API for higher fidelity.
     """
     try:
         if not text: return None
-        tts = gTTS(text=text, lang=lang, slow=False)
+        tts = gTTS(text=text, lang=lang, tld=tld, slow=False)
         fp = io.BytesIO()
         tts.write_to_fp(fp)
         fp.seek(0)
@@ -456,7 +456,7 @@ def analyze_sludge(file_bytes, file_type, target_lang="English", doc_type="leafl
         )
         initial_result = json.loads(response.text)
 
-        if status_container: status_container.markdown("🛡️ **Phase 2/2:** Verifying Risk Data (Amounts/Dates)...")
+        if status_container: status_container.markdown("🛡️ **Phase 2/2:** Verifying Risk Data...")
         return verify_safety(file_bytes, file_type, initial_result, SludgeAudit)
     except Exception as e:
         st.error(f"Analysis Error: {e}")
@@ -736,7 +736,8 @@ def render_tab_content(key_prefix):
                 if st.button("🗣️ Read Report", key=f"{key_prefix}_tts_btn", use_container_width=True):
                     with st.spinner("Generating audio report..."):
                         script = prepare_speech_script(result, mode="official")
-                        audio_data = generate_audio_gtts(script, lang=selected_lang_code)
+                        tld_param = "co.uk" if selected_lang_code == "en" else "com"
+                        audio_data = generate_audio_gtts(script, lang=selected_lang_code, tld=tld_param)
                         if audio_data:
                             st.session_state[KEY_AUDIO] = audio_data
             with c_audio_player:
@@ -913,6 +914,7 @@ def render_citizen_tab():
             format_func=lambda x: f"🌐 {x}")
         st.session_state[KEY_LANG] = target_lang
         selected_lang_code = lang_code_map[target_lang]
+        current_tld = "co.uk" if selected_lang_code == "en" else "com"
 
     has_result = st.session_state[KEY_RESULT] is not None
 
@@ -966,7 +968,7 @@ def render_citizen_tab():
                             script += "Important Dates. "
                             for d in result['important_dates']: script += f"{clean_markdown(d)}. "
                         
-                        audio_data = generate_audio_gtts(script, lang=selected_lang_code)
+                        audio_data = generate_audio_gtts(script, lang=selected_lang_code, tld=current_tld)
                         if audio_data: st.session_state[KEY_AUDIO_GUIDE] = audio_data
             with c_audio_player:
                 if st.session_state[KEY_AUDIO_GUIDE]: st.audio(st.session_state[KEY_AUDIO_GUIDE], format='audio/mp3')
@@ -1022,8 +1024,9 @@ def render_citizen_tab():
                 if st.button("🗣️ Listen to Steps", key=f"{key_prefix}_action_tts_btn", use_container_width=True):
                     with st.spinner("Generating audio..."):
                         script = f"Here are the steps to take. {clean_markdown(result.get('action_guide_markdown'))}"
-                        audio_data = generate_audio_gtts(script, lang=selected_lang_code)
-                        if audio_data: st.session_state[KEY_AUDIO_ACTION] = audio_data
+                        audio_data = generate_audio_gtts(script, lang=selected_lang_code, tld=current_tld)
+                        if audio_data: st.session_state[KEY_AUDIO_GUIDE] = audio_data
+
             with c_act_player:
                 if st.session_state[KEY_AUDIO_ACTION]: st.audio(st.session_state[KEY_AUDIO_ACTION], format='audio/mp3')
             
