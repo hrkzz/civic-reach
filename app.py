@@ -11,44 +11,44 @@ from views.officials import render_officials_tab
 
 def main() -> None:
     """Main entry point for the Civic Reach Streamlit app."""
-# Load environment variables
-load_dotenv()
-api_key = os.environ.get("GEMINI_API_KEY")
+    # Load environment variables
+    load_dotenv()
+    api_key = os.environ.get("GEMINI_API_KEY")
 
     # Streamlit Page Config (must be called before any other Streamlit commands)
-st.set_page_config(
-    page_title="Civic Reach",
-    page_icon="logo.png",
+    st.set_page_config(
+        page_title="Civic Reach",
+        page_icon="assets/logo.png",
         layout="wide",
-)
+    )
 
-if not api_key:
-    st.error("Error: GEMINI_API_KEY is not set in the .env file.")
-    st.stop()
+    if not api_key:
+        st.error("Error: GEMINI_API_KEY is not set in the .env file.")
+        st.stop()
 
-# Global styles
-load_css()
+    # Global styles
+    load_css()
 
-# Shared header (logo, title, security/reset)
-render_header()
-    
-# Tabs for Different Personas
-tab_official_notice, tab_official_leaflet, tab_citizen = st.tabs(
-    [
-    "[Officials] Notice Audit", 
-    "[Officials] Leaflet Audit", 
-        "[Citizens] Doc Decipher",
-    ]
-)
-with tab_official_notice:
-    render_officials_tab("notice")
-with tab_official_leaflet:
-    render_officials_tab("leaflet")
-with tab_citizen:
-    render_citizen_tab()
+    # Shared header (logo, title, security/reset)
+    render_header()
 
-# Shared footer / disclaimer
-render_footer()
+    # Tabs for Different Personas
+    tab_official_notice, tab_official_leaflet, tab_citizen = st.tabs(
+        [
+            "[Officials] Notice Audit",
+            "[Officials] Leaflet Audit",
+            "[Citizens] Doc Decipher",
+        ]
+    )
+    with tab_official_notice:
+        render_officials_tab("notice")
+    with tab_official_leaflet:
+        render_officials_tab("leaflet")
+    with tab_citizen:
+        render_citizen_tab()
+
+    # Shared footer / disclaimer
+    render_footer()
 
 
 if __name__ == "__main__":

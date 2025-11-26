@@ -8,7 +8,7 @@ def render_header() -> None:
     col_title, col_controls = st.columns([0.7, 0.3], gap="medium", vertical_alignment="bottom")
 
     with col_title:
-        logo_path = "logo.png"
+        logo_path = "assets/logo.png"
         logo_base64 = img_to_base64(logo_path)
         if logo_base64:
             st.markdown(
