@@ -40,7 +40,7 @@ def render_header() -> None:
         c_policy, c_reset = st.columns([1, 1], gap="small")
 
         with c_policy:
-            with st.popover("🔐 Security", use_container_width=True):
+            with st.popover("🔐 Security", width="stretch"):
                 st.markdown("### Zero-Retention Policy")
                 st.info(
                     """
@@ -55,7 +55,7 @@ def render_header() -> None:
             if st.button(
                 "🗑️ Reset App",
                 type="secondary",
-                use_container_width=True,
+                width="stretch",
                 help="Wipe all data and restart session",
             ):
                 clear_session_data()

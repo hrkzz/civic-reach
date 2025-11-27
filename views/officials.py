@@ -99,7 +99,7 @@ def render_officials_tab(doc_type: str) -> None:
                 "🚀 Run Analysis",
                 type="secondary",
                 key=f"{key_prefix}_analyze_btn",
-                use_container_width=True,
+                width="stretch",
             ):
                 status_box = st.empty()
                 file_bytes = uploaded_file.getvalue()
@@ -141,7 +141,7 @@ def render_officials_tab(doc_type: str) -> None:
                 if st.button(
                     "🗣️ Read Report",
                     key=f"{key_prefix}_tts_btn",
-                    use_container_width=True,
+                    width="stretch",
                 ):
                     with st.spinner("Generating audio report..."):
                         script = prepare_speech_script(result, mode="official")
@@ -288,7 +288,7 @@ def render_officials_tab(doc_type: str) -> None:
                 submitted = st.form_submit_button(
                     "📄 Generate Improved Document",
                     type="secondary",
-                    use_container_width=True,
+                    width="stretch",
                 )
 
             if submitted:
@@ -324,7 +324,7 @@ def render_officials_tab(doc_type: str) -> None:
                 st.image(
                     st.session_state[KEY_IMAGE],
                     caption="AI Generated Preview",
-                    use_container_width=True,
+                    width="stretch",
                 )
                 buf = io.BytesIO()
                 st.session_state[KEY_IMAGE].save(buf, format="PNG")
@@ -334,7 +334,7 @@ def render_officials_tab(doc_type: str) -> None:
                     file_name=f"improved_{key_prefix}.png",
                     mime="image/png",
                     key=f"{key_prefix}_dl_btn",
-                    use_container_width=True,
+                    width="stretch",
                 )
                 st.write("")
                 st.caption(

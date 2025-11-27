@@ -90,7 +90,7 @@ def render_citizen_tab() -> None:
                 "🔍 Run Analysis",
                 type="secondary",
                 key=f"{key_prefix}_analyze_btn",
-                use_container_width=True,
+                width="stretch",
             ):
                 status_box = st.empty()
                 file_bytes = uploaded_file.getvalue()
@@ -129,7 +129,7 @@ def render_citizen_tab() -> None:
                 if st.button(
                     "🗣️ Listen to Guide",
                     key=f"{key_prefix}_guide_tts_btn",
-                    use_container_width=True,
+                    width="stretch",
                 ):
                     with st.spinner("Generating audio..."):
                         script = f"Summary. {clean_markdown(result.get('simple_summary'))}. "
@@ -211,7 +211,7 @@ def render_citizen_tab() -> None:
                 if st.button(
                     "🗣️ Listen to Steps",
                     key=f"{key_prefix}_action_tts_btn",
-                    use_container_width=True,
+                    width="stretch",
                 ):
                     with st.spinner("Generating audio..."):
                         script = (
@@ -256,7 +256,9 @@ def render_citizen_tab() -> None:
                     )
 
                 submitted = st.form_submit_button(
-                    "✨ Generate Draft", type="primary", use_container_width=True
+                    "✨ Generate Draft",
+                    type="primary",
+                    width="stretch",
                 )
 
             if submitted:
