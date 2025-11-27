@@ -1,0 +1,108 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
+
+html, body, [class*="css"] {
+    font-family: 'Inter', sans-serif !important;
+    color: #000000 !important;
+}
+
+/* Adjust top padding to prevent header overlap */
+.block-container {
+    padding-top: 3rem !important;
+    padding-bottom: 5rem !important;
+}
+
+/* Tweak Expander spacing */
+div[data-testid="stExpanderDetails"] {
+    padding-top: 1rem !important;
+    padding-bottom: 1rem !important;
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+}
+
+/* Compact File Uploader */
+div[data-testid="stFileUploader"] {
+    padding-top: 0rem !important;
+    margin-top: -5px !important;
+}
+section[data-testid="stFileUploaderDropzone"] {
+    min-height: 0px !important;
+    padding: 1rem !important;
+}
+section[data-testid="stFileUploaderDropzone"] button {
+    font-weight: 400 !important; /* 400 = Normal weight */
+}
+
+/* Verified Badge Style */
+.safety-badge {
+    background-color: #e8f5e9;
+    border: 1px solid #4caf50;
+    color: #2e7d32;
+    padding: 5px 10px;
+    border-radius: 15px;
+    font-size: 0.8rem;
+    font-weight: bold;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin-bottom: 10px;
+}
+
+/* Reset gap between tabs in the container */
+div[data-testid="stTabs"] div[data-baseweb="tab-list"] {
+    gap: 0px !important;
+}
+
+div[data-testid="stTabs"] div[data-baseweb="tab-list"] button {
+    font-weight: 600;
+    border-radius: 0px;
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
+    margin-right: 0px !important;
+    padding-left: 20px;
+    padding-right: 20px;
+    border: none !important;
+    transition: all 0.2s;
+    /* Add a subtle separator line on the right */
+    border-right: 1px solid rgba(0,0,0,0.05) !important;
+}
+
+/* Remove border from the very last tab */
+div[data-testid="stTabs"] div[data-baseweb="tab-list"] button:last-child {
+    border-right: none !important;
+}
+
+/* 1st & 2nd Tabs: OFFICIALS (Cool Blue Theme) */
+div[data-testid="stTabs"] div[data-baseweb="tab-list"] button[data-testid="stTab"]:nth-child(1),
+div[data-testid="stTabs"] div[data-baseweb="tab-list"] button[data-testid="stTab"]:nth-child(2) {
+    background-color: #f0f7ff;
+    color: #004b87;
+}
+/* Active state for Officials */
+div[data-testid="stTabs"] div[data-baseweb="tab-list"] button[aria-selected="true"]:nth-child(1),
+div[data-testid="stTabs"] div[data-baseweb="tab-list"] button[aria-selected="true"]:nth-child(2) {
+    background-color: #e0f0ff;
+    box-shadow: inset 0 -2px 0 0 #004b87;
+}
+
+/* 3rd Tab: CITIZENS (Friendly Green Theme) */
+div[data-testid="stTabs"] div[data-baseweb="tab-list"] button[data-testid="stTab"]:nth-child(3) {
+    background-color: #f1f8e9;
+    color: #2e7d32;
+}
+/* Active state for Citizens */
+div[data-testid="stTabs"] div[data-baseweb="tab-list"] button[aria-selected="true"]:nth-child(3) {
+    background-color: #e8f5e9;
+    box-shadow: inset 0 -2px 0 0 #2e7d32;
+}
+
+/* Remove default Streamlit red line */
+div[data-testid="stTabs"] div[data-baseweb="tab-highlight"] {
+    display: none !important;
+}
+
+/* Add a clean bottom border to the whole tab container */
+div[data-testid="stTabs"] {
+     border-bottom: 1px solid #e0e0e0;
+}
+
+

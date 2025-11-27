@@ -1,24 +1,42 @@
-## Civic Reach
+# Civic Reach
 
-簡易な説明と、アプリを起動するための最低限の手順のみを記載しています。
+Behavioral Science × GenAI for Public Services
 
-### 必要環境
-- **Python**: 3.10 以上を推奨
-- **API キー**: Google Gemini (`GEMINI_API_KEY`)
+Civic Reach is a GovTech prototype designed to detect and reduce "Administrative Sludge" (frictions) in government documents. Built for the G7 GovAI Grand Challenge, it implements the OECD 2024 "Fixing Frictions" framework to quantify psychological costs in public communications and help citizens decipher them.
 
-### セットアップ
-1. **依存関係のインストール**
-   ```bash
-   pip install -r requirements.txt
-   ```
-2. **環境変数の設定 (.env)**
-   ```bash
-   echo "GEMINI_API_KEY=あなたの_API_キー" > .env
-   ```
+## Key Features
+- For Officials: Quantifies "Sludge" (Search, Decision, Cognitive, Emotional costs) and auto-generates redesigned visual prototypes.
+- For Citizens: Deciphers complex notices into plain language and drafts formal responses.
+- Privacy: Stateless architecture (Zero-Retention Policy) suitable for public sector prototyping.
 
-### 起動方法
+## Requirements
+- Python 3.10+
+- Google Gemini API Key
+
+## Quick Start
+1. Installation
 ```bash
-streamlit run app.py --server.headless true
+git clone https://github.com/hrkzz/civic-reach.git
+cd civic-reach
+pip install -r requirements.txt
 ```
 
+2. Configuration
+```bash
+GEMINI_API_KEY=your_gemini_api_key_here
+```
 
+3. Run App
+```bash
+streamlit run app.py
+```
+
+## Methodology
+This tool is not a generic wrapper. It implements specific scoring criteria derived from behavioral science. See [methodology.md](https://github.com/hrkzz/civic-reach/blob/main/methodology.md) for the detailed logic based on the OECD 2024 Report.
+
+## Disclaimer
+This is a prototype developed for the G7 GovAI Grand Challenge. All outputs should be reviewed by human officials ("Human-in-the-loop").
+
+
+## References
+OECD (2024), Fixing Frictions: *‘Sludge audits’ around the world*, OECD Public Governance Policy Papers, OECD Publishing, Paris.[https://www.oecd.org/en/publications/fixing-frictions-sludge-audits-around-the-world_5e9bb35c-en.html](https://www.oecd.org/en/publications/fixing-frictions-sludge-audits-around-the-world_5e9bb35c-en.html)
