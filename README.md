@@ -34,9 +34,9 @@ streamlit run app.py
 ## Methodology
 This tool is not a generic wrapper. It implements specific scoring criteria derived from behavioral science. See [methodology.md](https://github.com/hrkzz/civic-reach/blob/main/methodology.md) for the detailed logic based on the OECD 2024 Report.
 
+## References
+OECD (2024), Fixing Frictions: *‘Sludge audits’ around the world*, OECD Public Governance Policy Papers, OECD Publishing, Paris.[https://www.oecd.org/en/publications/fixing-frictions-sludge-audits-around-the-world_5e9bb35c-en.html](https://www.oecd.org/en/publications/fixing-frictions-sludge-audits-around-the-world_5e9bb35c-en.html)
+
 ## Disclaimer
 This is a prototype developed for the G7 GovAI Grand Challenge. All outputs should be reviewed by human officials ("Human-in-the-loop").
 
-
-## References
-OECD (2024), Fixing Frictions: *‘Sludge audits’ around the world*, OECD Public Governance Policy Papers, OECD Publishing, Paris.[https://www.oecd.org/en/publications/fixing-frictions-sludge-audits-around-the-world_5e9bb35c-en.html](https://www.oecd.org/en/publications/fixing-frictions-sludge-audits-around-the-world_5e9bb35c-en.html)
