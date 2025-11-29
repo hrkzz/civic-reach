@@ -1,16 +1,6 @@
-<table>
-  <tr>
-    <td width="25%" align="center">
-      <img src="assets/logo.png" alt="Civic Reach Logo" width="150">
-    </td>
-    <td valign="center">
-      <h1>
-        Civic Reach<br>
-        <small>Behavioral Science × GenAI for Public Services</small>
-      </h1>
-    </td>
-  </tr>
-</table>
+# Civic Reach
+
+Behavioral Science × GenAI for Public Services
 
 Civic Reach is a GovTech prototype designed to detect and reduce "Administrative Sludge" (frictions) in government documents. Built for the G7 GovAI Grand Challenge, it implements the OECD 2024 "Fixing Frictions" framework to quantify psychological costs in public communications and help citizens decipher them.
 
