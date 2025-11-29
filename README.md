@@ -22,6 +22,7 @@ pip install -r requirements.txt
 ```
 
 2. Configuration
+
 Create .env file and put it in the repository root directory.
 ```bash
 GEMINI_API_KEY=your_gemini_api_key_here
