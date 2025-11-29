@@ -14,21 +14,21 @@ Civic Reach is a GovTech prototype designed to detect and reduce "Administrative
 - Google Gemini API Key
 
 ## Quick Start
-1. Installation
+### 1. Installation
 ```bash
 git clone https://github.com/hrkzz/civic-reach.git
 cd civic-reach
 pip install -r requirements.txt
 ```
 
-2. Configuration
+### 2. Configuration
 
 Create .env file and put it in the repository root directory.
 ```bash
 GEMINI_API_KEY=your_gemini_api_key_here
 ```
 
-3. Run App
+### 3. Run App
 ```bash
 streamlit run app.py
 ```
